@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 from gef_core.utils.validators import asdict, positive_value
 
+sidecar_path = f"vault/50-sidecars/{__name__}/"
 
 ureg = pint.UnitRegistry()
 
