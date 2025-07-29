@@ -1,0 +1,45 @@
+# Configuration for the GEF Mass-to-Geometry Spectrometer
+
+# --- Mode ---
+# 'single': Calculates for a single mass value.
+# 'sweep':  Performs a sweep over a range of masses.
+mode: "sweep"
+
+# --- Single Mode Parameters (only used if mode is 'single') ---
+single_mass_MeV: 235.0 # Our refined estimate for the GEF Planck Particle
+
+# --- Sweep Mode Parameters (only used if mode is 'sweep') ---
+sweep:
+  # 'linear' or 'log'. Log is better for covering many orders of magnitude.
+  scale: 'log'
+  start_MeV: 0.1      # Start near the electron mass
+  stop_MeV: 1.0e6     # Go up to 1 TeV
+  num_points: 10000   # Number of points in the sweep
+
+# --- Data Overlay ---
+# A list of known particles to plot on top of the theoretical curve.
+# Format: [Name, Mass_in_MeV, Color_for_plot]
+known_particles:
+  - ["Electron", 0.511, "green"]
+  - ["Muon", 105.7, "green"]
+  - ["Tau", 1777, "green"]
+  - ["Pion (π⁺)", 139.6, "cyan"]
+  - ["Proton", 938.3, "cyan"]
+  - ["W Boson", 80379, "orange"]
+  - ["Z Boson", 91187, "orange"]
+  - ["Higgs Boson", 125100, "red"]
+  - ["Top Quark", 172760, "red"]
+  - ["Planck Mass", 1.22e19, "magenta"] # 1.22e22 MeV = 1.22e19 GeV
+
+# --- Output ---
+output_dir: 'data/analysis/mass_spectrometer/'
+# The script will add a timestamp and run ID to the filename
+base_filename: 'grand_sweep_results'
+
+# --- Plotting Parameters ---
+plotting:
+  figsize: [14, 10]
+  dpi: 200
+  title: "GEF Mass-to-Geometry Spectrometer"
+  xlabel: "Particle Rest Mass (MeV/c²)"
+  ylabel: "Predicted GEF Geometric Radius (fm)"

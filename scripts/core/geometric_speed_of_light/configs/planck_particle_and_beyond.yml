@@ -1,0 +1,30 @@
+
+
+# --- Mode ---
+mode: "sweep" # We are running in sweep mode
+
+# --- Sweep Parameters ---
+# We will sweep logarithmically to cover the vast range of masses.
+# This requires a slight modification to the script to handle a log-sweep.
+# For now, let's define a series of linear sweeps to cover the key areas.
+# (This is a conceptual plan; a real script would handle this more elegantly)
+
+sweep_segments:
+  - name: "Leptons"
+    start_MeV: 0.5    # Near electron mass
+    stop_MeV: 1800    # Near tau mass
+    num_steps: 1000
+
+  - name: "Hadrons_Light"
+    start_MeV: 100    # Pion/Kaon scale
+    stop_MeV: 2000    # Proton/Neutron/Lambda scale
+    num_steps: 1000
+
+  - name: "Heavy_Quarks_and_Bosons"
+    start_MeV: 1000   # 1 GeV
+    stop_MeV: 200000  # 200 GeV (Top quark / Higgs scale)
+    num_steps: 2000
+
+# --- Output ---
+# We will want to combine the results from these segments later.
+output_dir: 'data/analysis/grand_sweep/'
