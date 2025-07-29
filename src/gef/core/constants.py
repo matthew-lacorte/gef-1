@@ -80,48 +80,7 @@ electron_volt = sp.Symbol('electron_volt', real=True, positive=True)
 m_PlanckParticle = sp.Symbol('m_PlanckParticle', real=True, positive=True)
 
 
-CONSTANTS: List[ConstantInfo] = [
-    # --- existing entries ---
-    ConstantInfo(
-        name="c",
-        symbol=sp.Symbol('c'),
-        value=299_792_458,
-        units="meter/second",
-        description="Exact CODATA speed of light.",
-        category="fundamental",
-        sidecar_path="physics/constants/c.md"
-    ),
-    ConstantInfo(
-        name="electron_volt",
-        symbol=sp.Symbol('eV'),
-        value=1.602_176_634e-19,
-        units="joule",
-        description="Exact conversion factor (1 eV in J).",
-        category="conversion",
-        sidecar_path="physics/constants/electron_volt.md"
-    ),
-    ConstantInfo(
-        name="planck",
-        symbol=sp.Symbol('h'),
-        value=6.626_070_15e-34,
-        units="joule*second",
-        description="Planck constant (CODATA 2019 exact).",
-        category="fundamental",
-        sidecar_path="physics/constants/planck.md"
-    ),
-    # NEW canonical Planck‑particle mass
-    ConstantInfo(
-        name="m_PlanckParticle",
-        symbol=m_PlanckParticle,
-        value=200.0,               # MeV
-        units="MeV",
-        description="GEF canonical Planck‑particle rest‑energy scale.",
-        category="model parameter",
-        sidecar_path="physics/constants/m_PlanckParticle.md"
-    ),
-]
-
-
+# Define all constants in a single list
 CONSTANTS: List[ConstantInfo] = [
     ConstantInfo(
         name="b_0",
@@ -167,6 +126,34 @@ CONSTANTS: List[ConstantInfo] = [
         description="Emergent rest mass derived from the model (not fundamental).",
         category="derived constant",
         sidecar_path="physics/constants/m_0.md"
+    ),
+    # Updated constants for physics calculations
+    ConstantInfo(
+        name="c",
+        symbol=c,
+        value=299_792_458,
+        units="meter/second",
+        description="Speed of light in vacuum (CODATA 2019 exact).",
+        category="fundamental",
+        sidecar_path="physics/constants/c.md"
+    ),
+    ConstantInfo(
+        name="planck",
+        symbol=sp.Symbol('h'),
+        value=6.626_070_15e-34,
+        units="joule*second",
+        description="Planck constant (CODATA 2019 exact).",
+        category="fundamental",
+        sidecar_path="physics/constants/planck.md"
+    ),
+    ConstantInfo(
+        name="electron_volt",
+        symbol=electron_volt,
+        value=1.602_176_634e-19,
+        units="joule",
+        description="Electron volt in joules (CODATA 2019 exact).",
+        category="conversion",
+        sidecar_path="physics/constants/electron_volt.md"
     ),
     ConstantInfo(
         name="m_PlanckParticle",

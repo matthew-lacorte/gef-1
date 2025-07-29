@@ -5,6 +5,8 @@ from enum import Enum
 class ConstantCategory(str, Enum):
     MODEL = "model parameter"
     DERIVED = "derived constant"
+    FUNDAMENTAL = "fundamental"
+    CONVERSION = "conversion"
     # Add more as needed
 
 class ProvenanceState(str, Enum):
