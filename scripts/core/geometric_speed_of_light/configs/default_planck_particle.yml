@@ -1,0 +1,10 @@
+# Planck‑particle calculator configuration
+mode: "sweep"          # "single" or "sweep"
+
+single:
+  mass_MeV: 200.0      # used only if m_PlanckParticle is not in constants.py
+
+sweep:
+  start_MeV: 150.0
+  stop_MeV:  250.0
+  step_MeV:  10.0

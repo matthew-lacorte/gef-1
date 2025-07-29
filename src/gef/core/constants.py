@@ -77,7 +77,50 @@ m   = sp.Symbol('m', real=True, positive=True)
 c   = sp.Symbol('c', real=True, positive=True)
 m_0 = sp.Symbol('m_0', real=True, positive=True)
 electron_volt = sp.Symbol('electron_volt', real=True, positive=True)
-planck = sp.Symbol('planck', real=True, positive=True)  # Planck constant
+m_PlanckParticle = sp.Symbol('m_PlanckParticle', real=True, positive=True)
+
+
+CONSTANTS: List[ConstantInfo] = [
+    # --- existing entries ---
+    ConstantInfo(
+        name="c",
+        symbol=sp.Symbol('c'),
+        value=299_792_458,
+        units="meter/second",
+        description="Exact CODATA speed of light.",
+        category="fundamental",
+        sidecar_path="physics/constants/c.md"
+    ),
+    ConstantInfo(
+        name="electron_volt",
+        symbol=sp.Symbol('eV'),
+        value=1.602_176_634e-19,
+        units="joule",
+        description="Exact conversion factor (1 eV in J).",
+        category="conversion",
+        sidecar_path="physics/constants/electron_volt.md"
+    ),
+    ConstantInfo(
+        name="planck",
+        symbol=sp.Symbol('h'),
+        value=6.626_070_15e-34,
+        units="joule*second",
+        description="Planck constant (CODATA 2019 exact).",
+        category="fundamental",
+        sidecar_path="physics/constants/planck.md"
+    ),
+    # NEW canonical Planck‑particle mass
+    ConstantInfo(
+        name="m_PlanckParticle",
+        symbol=m_PlanckParticle,
+        value=200.0,               # MeV
+        units="MeV",
+        description="GEF canonical Planck‑particle rest‑energy scale.",
+        category="model parameter",
+        sidecar_path="physics/constants/m_PlanckParticle.md"
+    ),
+]
+
 
 CONSTANTS: List[ConstantInfo] = [
     ConstantInfo(
@@ -126,13 +169,13 @@ CONSTANTS: List[ConstantInfo] = [
         sidecar_path="physics/constants/m_0.md"
     ),
     ConstantInfo(
-        name="planck",
-        symbol=planck,
-        value=6.626_070_15e-34,  # CODATA 2019 exact value
-        units="J·s",
-        description="Planck constant (h) - fundamental constant of quantum mechanics.",
-        category="derived constant",
-        sidecar_path="physics/constants/planck.md"
+        name="m_PlanckParticle",
+        symbol=m_PlanckParticle,
+        value=200.0,               # MeV
+        units="MeV",
+        description="GEF canonical Planck‑particle rest‑energy scale.",
+        category="model parameter",
+        sidecar_path="physics/constants/m_PlanckParticle.md"
     ),
 ]
 
