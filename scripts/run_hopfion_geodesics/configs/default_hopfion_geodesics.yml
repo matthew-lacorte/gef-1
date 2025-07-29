@@ -1,0 +1,102 @@
+# Default configuration for Hopfion geodesics calculation
+# This config defines parameters for calculating geodesics on Hopfion manifolds
+
+# --- Hopfion Configuration ---
+hopfion:
+  # Winding number for the Hopfion
+  winding_number: 1
+  
+  # Grid resolution for the field
+  grid_size: 64
+  
+  # Domain size
+  domain_size: 10.0
+  
+  # Anisotropic coupling strength
+  g_squared: 2.0
+  
+  # Environmental pressure term
+  P_env: 0.0
+  
+  # Resonance model for g_squared calculation
+  resonance_model:
+    enabled: false
+    base_value: 2.0
+    peaks:
+      - center: 1
+        amplitude: 0.5
+        sigma: 0.2
+      - center: 3
+        amplitude: 0.3
+        sigma: 0.15
+
+# --- Relaxation Parameters ---
+relaxation:
+  # Relaxation timestep
+  relaxation_dt: 1.0e-5
+  
+  # Maximum number of iterations
+  max_iterations: 100000
+  
+  # Convergence threshold
+  convergence_threshold: 1.0e-6
+  
+  # Early exit energy threshold (exit if energy exceeds this value)
+  early_exit_energy_threshold: 0.0
+  
+  # Adaptive timestepping parameters
+  adaptive_timestepping:
+    enabled: true
+    min_dt: 1.0e-9
+    max_dt: 1.0e-3
+    dt_up_factor: 1.1
+    dt_down_factor: 0.5
+    max_phi_change_per_step: 0.01
+
+# --- Geodesic Calculation ---
+geodesics:
+  # Number of geodesics to calculate
+  num_geodesics: 10
+  
+  # Starting points selection method
+  # Options: 'random', 'uniform', 'custom'
+  starting_points: "uniform"
+  
+  # Custom starting points file (only used if starting_points is 'custom')
+  custom_points_file: "data/custom_starting_points.npz"
+  
+  # Geodesic integration parameters
+  integration:
+    method: "rk4"  # Runge-Kutta 4th order
+    step_size: 0.01
+    num_steps: 1000
+    
+  # Constraint parameters (to keep geodesics on the manifold)
+  constraints:
+    enforce: true
+    tolerance: 1.0e-6
+    max_iterations: 10
+
+# --- Visualization ---
+visualization:
+  # 3D projection method
+  # Options: 'stereographic', 'orthogonal', 'equirectangular'
+  projection: "stereographic"
+  
+  # Animation settings
+  animation:
+    type: "tumbler"  # 'tumbler' or 'w-slice'
+    frames: 60
+    fps: 15
+    
+  # Figure settings
+  figsize: [10, 10]
+  dpi: 150
+  
+  # Color settings
+  colors:
+    manifold: "lightblue"
+    geodesics: ["red", "green", "blue", "orange", "purple"]
+    
+  # Enable parallel rendering using multiprocessing
+  parallel_rendering: true

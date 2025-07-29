@@ -1,0 +1,93 @@
+# Default configuration for Standard Model Family GEF properties
+# This config defines parameters for calculating and visualizing
+# geometric properties of standard model particles
+
+# --- Mode ---
+# 'all': Process all standard model particles
+# 'family': Process only a specific family
+mode: "all"
+
+# --- Family Selection (only used if mode is 'family') ---
+# Options: 'leptons', 'quarks', 'bosons'
+family: "leptons"
+
+# --- Particle Definitions ---
+# Each particle has its name, mass in MeV/c², and family classification
+particles:
+  # Leptons
+  - name: "Electron"
+    mass_MeV: 0.511
+    family: "leptons"
+    color: "green"
+  - name: "Muon"
+    mass_MeV: 105.7
+    family: "leptons"
+    color: "green"
+  - name: "Tau"
+    mass_MeV: 1776.86
+    family: "leptons"
+    color: "green"
+  
+  # Quarks
+  - name: "Up"
+    mass_MeV: 2.2
+    family: "quarks"
+    color: "blue"
+  - name: "Down"
+    mass_MeV: 4.7
+    family: "quarks"
+    color: "blue"
+  - name: "Charm"
+    mass_MeV: 1280
+    family: "quarks"
+    color: "blue"
+  - name: "Strange"
+    mass_MeV: 96
+    family: "quarks"
+    color: "blue"
+  - name: "Top"
+    mass_MeV: 173100
+    family: "quarks"
+    color: "blue"
+  - name: "Bottom"
+    mass_MeV: 4180
+    family: "quarks"
+    color: "blue"
+  
+  # Bosons
+  - name: "W Boson"
+    mass_MeV: 80379
+    family: "bosons"
+    color: "red"
+  - name: "Z Boson"
+    mass_MeV: 91188
+    family: "bosons"
+    color: "red"
+  - name: "Higgs Boson"
+    mass_MeV: 125180
+    family: "bosons"
+    color: "red"
+
+# --- Visualization Settings ---
+visualization:
+  # Plot type: 'scatter', 'bar', 'line'
+  plot_type: "scatter"
+  
+  # X-axis: 'mass', 'frequency', 'tick_time', 'radius'
+  x_axis: "mass"
+  
+  # Y-axis: 'frequency', 'tick_time', 'radius'
+  y_axis: "radius"
+  
+  # Use log scale for axes
+  log_x: true
+  log_y: true
+  
+  # Plot title
+  title: "Standard Model Particles: GEF Geometric Properties"
+  
+  # Figure size (width, height) in inches
+  figsize: [12, 8]
+  
+  # Output DPI
+  dpi: 300

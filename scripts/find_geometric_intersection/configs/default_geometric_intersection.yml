@@ -1,0 +1,71 @@
+# Default configuration for geometric intersection detection
+# This config defines parameters for finding intersections in 4D space
+
+# --- Geometry Generation ---
+geometry:
+  # Types of geometric objects to generate
+  # Options: 'sphere', 'torus', 'hopfion', 'custom'
+  types:
+    - type: "sphere"
+      radius: 1.0
+      center: [0.0, 0.0, 0.0, 0.0]
+      points: 10000
+    
+    - type: "torus"
+      major_radius: 2.0
+      minor_radius: 0.5
+      center: [1.0, 1.0, 0.0, 0.0]
+      points: 10000
+    
+    - type: "hopfion"
+      winding: 1
+      radius: 1.0
+      center: [0.0, 0.0, 1.0, 1.0]
+      points: 10000
+  
+  # Custom geometry from file (only used if type includes 'custom')
+  custom_file: "data/custom_geometry.npz"
+
+# --- Intersection Detection ---
+intersection:
+  # Maximum distance for considering points as intersecting
+  tolerance: 0.01
+  
+  # KD-tree parameters
+  kdtree:
+    leaf_size: 16
+    distance_metric: "euclidean"
+  
+  # Parallelization settings
+  parallel:
+    use_multiprocessing: true
+    num_processes: 8
+    chunk_size: 1000
+
+# --- Visualization ---
+visualization:
+  # Dimension reduction method for visualization
+  # Options: 'pca', 't-sne', 'umap'
+  dim_reduction: "pca"
+  
+  # Animation settings
+  animation:
+    # Animation type: 'tumbler' (360° rotation) or 'w-slice' (sweep through W-dimension)
+    type: "tumbler"
+    frames: 60
+    fps: 15
+    
+  # Figure settings
+  figsize: [10, 10]
+  dpi: 150
+  
+  # Color settings
+  colors:
+    object1: "blue"
+    object2: "green"
+    intersection: "red"
+  
+  # Point size settings
+  point_sizes:
+    object: 2
+    intersection: 5

@@ -32,9 +32,8 @@ known_particles:
   - ["Planck Mass", 1.22e19, "magenta"] # 1.22e22 MeV = 1.22e19 GeV
 
 # --- Output ---
-output_dir: 'data/analysis/mass_spectrometer/'
-# The script will add a timestamp and run ID to the filename
-base_filename: 'grand_sweep_results'
+# Output directory is now handled by the script using the -o flag
+# The script will create a timestamped directory under outputs/
 
 # --- Plotting Parameters ---
 plotting:
