@@ -1,0 +1,719 @@
+"""
+Fractal Spelunker: A high-performance engine for exploring and analyzing
+fractals derived from the General Euclidean Flow (GEF) model.
+
+Features:
+- Mandelbrot and Julia set rendering.
+- Anisotropic scaling (constant or spatially-varying).
+- Critical orbit visualization.
+- Built-in analysis tools:
+  - Trapped area vs. parameter plots.
+  - Frame-to-frame difference visualization.
+- High-performance core using Numba for JIT compilation.
+- Robust configuration validation.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import yaml
+from pathlib import Path
+import math
+import time
+from tqdm import tqdm
+import argparse
+import sys
+from typing import Dict, Any
+
+# --- Numba Set-up (graceful fallback) ---
+try:
+    from numba import njit, prange, float64, int64, boolean, complex128
+    from numba.experimental import jitclass
+except ImportError:
+    print("Numba not found → running in pure-Python (will be slow).")
+    def njit(f=None, **kw): return (lambda g: g)(f) if f else (lambda g: g)
+    def jitclass(spec): return lambda cls: cls
+    prange = range
+
+# ==============================================================================
+# 1. PARAMETER DATA STRUCTURES (using @jitclass for Numba)
+# ==============================================================================
+# Using jitclass allows us to pass structured, typed parameters into Numba
+# functions, cleaning up function signatures immensely.
+
+param_spec = [
+    ('scale_x', float64), ('scale_y', float64),
+    ('use_spatial_lambda', boolean),
+    ('base_lambda', float64), ('amp', float64), ('sigma_sq', float64)
+]
+@jitclass(param_spec)
+class IteratorParams:
+    def __init__(self, scale_x, scale_y, use_spatial_lambda, base_lambda, amp, sigma_sq):
+        self.scale_x = scale_x
+        self.scale_y = scale_y
+        self.use_spatial_lambda = use_spatial_lambda
+        self.base_lambda = base_lambda
+        self.amp = amp
+        self.sigma_sq = sigma_sq
+
+# ==============================================================================
+# 2. CORE FRACTAL ITERATION FUNCTIONS
+# ==============================================================================
+@njit(inline='always')
+def gef_iter(z: complex,
+             c: complex,
+             cos_th: float,
+             sin_th: float,
+             params: IteratorParams) -> complex:
+    """
+    Performs one iteration of the GEF model.
+    Handles both constant and spatially-varying anisotropy based on params.
+    """
+    if params.use_spatial_lambda:
+        r_squared = min(z.real**2 + z.imag**2, 100.0)
+        lam = params.base_lambda + params.amp * math.exp(-r_squared / params.sigma_sq)
+        scale_y = max(0.1, min(lam, 2.0))
+    else:
+        scale_y = params.scale_y
+
+    rot = cos_th + 1j * sin_th
+    irot = cos_th - 1j * sin_th
+    
+    # FIXED: Apply initial rotation
+    z_rot = z * rot
+    # Take absolute values (Burning Ship behavior)
+    z_abs = abs(z_rot.real) + 1j * abs(z_rot.imag)
+    # Apply anisotropic scaling
+    z_scaled = z_abs.real * params.scale_x + 1j * z_abs.imag * scale_y
+    # Apply inverse rotation
+    z_prime = z_scaled * irot
+    
+    return z_prime * z_prime + c
+
+# ==============================================================================
+# 3. RENDER ENGINES
+# ==============================================================================
+@njit(parallel=True)
+def _render_fractal(width: int,
+                    height: int,
+                    x_min: float,
+                    x_max: float,
+                    y_min: float,
+                    y_max: float,
+                    max_iter: int,
+                    cos_th: float,
+                    sin_th: float,
+                    is_julia: bool,
+                    c_julia: complex,
+                    iter_params: IteratorParams) -> np.ndarray:
+    """Renders a GEF fractal (Mandelbrot or Julia) using integer escape-time."""
+    img = np.zeros((height, width), dtype=np.uint16)
+    dx = (x_max - x_min) / width
+    dy = (y_max - y_min) / height
+
+    for py in prange(height):
+        y0 = y_min + py * dy
+        for px in range(width):
+            x0 = x_min + px * dx
+            c = c_julia if is_julia else complex(x0, y0)
+            z = complex(x0, y0) if is_julia else 0j
+            
+            for n in range(max_iter):
+                if z.real**2 + z.imag**2 > 4.0:
+                    img[py, px] = n
+                    break
+                z = gef_iter(z, c, cos_th, sin_th, iter_params)
+    return img
+
+@njit
+def _render_orbit(c: complex,
+                  cos_th: float,
+                  sin_th: float,
+                  num_points: int,
+                  transient_skip: int,
+                  iter_params: IteratorParams) -> np.ndarray:
+    """Calculates the critical point orbit with robust escape/convergence checks."""
+    orbit_points = np.zeros(num_points, dtype=np.complex128)
+    z = 0j
+    escape_radius_sq = 100.0
+
+    # Skip transient behavior with safety checks
+    for _ in range(transient_skip):
+        z_prev = z
+        z = gef_iter(z, c, cos_th, sin_th, iter_params)
+        mag_sq = z.real**2 + z.imag**2
+        if mag_sq > escape_radius_sq or not math.isfinite(mag_sq):
+            return np.array([0j]) # Escaped or overflowed
+        if abs(z - z_prev) < 1e-12: # Converged to a fixed point
+            break
+    
+    # Record the main orbit
+    for i in range(num_points):
+        z = gef_iter(z, c, cos_th, sin_th, iter_params)
+        mag_sq = z.real**2 + z.imag**2
+        if mag_sq > escape_radius_sq or not math.isfinite(mag_sq):
+            return orbit_points[:i] # Return partial orbit on escape
+        orbit_points[i] = z
+    return orbit_points
+
+# ==============================================================================
+# 4. PLOTTING AND ANALYSIS
+# ==============================================================================
+def plot_and_save_frame(img_data: np.ndarray,
+                        frame_path: Path,
+                        title: str,
+                        cmap: str,
+                        dpi: int,
+                        figsize: tuple,
+                        extent: list = None,
+                        log_norm: bool = False):
+    """A centralized, 'dumb' utility for plotting and saving a single frame."""
+    fig, ax = plt.subplots(figsize=figsize, facecolor="black")
+    
+    norm = colors.LogNorm(vmin=1, vmax=img_data.max()) if log_norm and img_data.max() > 0 else None
+    ax.imshow(img_data, cmap=cmap, extent=extent, origin='lower', norm=norm)
+    
+    ax.set_title(title, color="white", fontsize=16)
+    ax.axis("off")
+    fig.tight_layout(pad=0)
+    try:
+        plt.savefig(frame_path, facecolor="black", dpi=dpi)
+    finally:
+        plt.close(fig) # Ensure cleanup even if saving fails
+
+def calculate_fractal_metrics(frame_data: np.ndarray) -> Dict[str, float]:
+    """Calculates a set of useful metrics from a rendered fractal frame."""
+    total_points = frame_data.size
+    escaped_mask = frame_data > 0
+    trapped_points = total_points - np.count_nonzero(escaped_mask)
+    
+    metrics = {
+        'trapped_fraction': trapped_points / total_points,
+        'mean_escape_time': 0.0,
+        'escape_time_std': 0.0
+    }
+    if escaped_mask.any():
+        escaped_values = frame_data[escaped_mask]
+        metrics['mean_escape_time'] = np.mean(escaped_values)
+        metrics['escape_time_std'] = np.std(escaped_values)
+        
+    return metrics
+
+def generate_area_curve_plot(thetas_pi: np.ndarray, area_fractions: list, output_dir: Path, config: Dict):
+    """Generates a plot of trapped area vs. angle, highlighting phase transitions."""
+    p_analysis = config['analysis']
+    fig, ax = plt.subplots(figsize=tuple(p_analysis.get('area_curve_figsize', [10, 6])))
+    ax.plot(thetas_pi, area_fractions, 'b-', linewidth=2, label='Trapped Area')
+    ax.set_xlabel('Angle (θ/π)', fontsize=14)
+    ax.set_ylabel('Trapped Area Fraction', fontsize=14)
+    ax.set_title('Trapped Area vs. Rotation Angle', fontsize=16)
+    ax.grid(True, alpha=0.3)
+    
+    # Detect and highlight potential phase transitions
+    if len(area_fractions) > 1:
+        area_diff = np.abs(np.diff(area_fractions))
+        threshold = np.mean(area_diff) + 2 * np.std(area_diff)
+        for idx in np.where(area_diff > threshold)[0]:
+            ax.axvline(x=thetas_pi[idx], color='r', linestyle='--', alpha=0.7, label=f'Transition at {thetas_pi[idx]:.3f}π')
+    
+    # Avoid duplicate labels in legend
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys())
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / "analysis_area_vs_angle.png", dpi=150)
+    plt.close(fig)
+
+# ==============================================================================
+# 5. CONFIGURATION AND ORCHESTRATION
+# ==============================================================================
+def load_and_validate_config(config_path: Path) -> Dict:
+    """Loads and validates the YAML configuration file."""
+    if not config_path.is_file():
+        raise FileNotFoundError(f"Config file not found at '{config_path}'")
+    with config_path.open() as f:
+        cfg = yaml.safe_load(f)
+
+    # Validation logic
+    required = ['mode', 'output_dir', 'image_size', 'fractal_window', 'max_iterations', 'sweep_parameters']
+    for key in required:
+        if key not in cfg: raise ValueError(f"Missing required config key: {key}")
+    if cfg['mode'] not in ['mandelbrot', 'julia', 'orbit']:
+        raise ValueError(f"Invalid mode: {cfg['mode']}")
+    if not (16 <= cfg['image_size'] <= 16384):
+        raise ValueError(f"image_size is out of reasonable range (16-16384): {cfg['image_size']}")
+    
+    # FIXED: Add validation for fractal_window format
+    if len(cfg['fractal_window']) != 4:
+        raise ValueError("fractal_window must have exactly 4 values: [x_min, x_max, y_min, y_max]")
+    
+    # FIXED: Add validation for sweep_parameters
+    sweep = cfg['sweep_parameters']
+    required_sweep = ['start_angle_pi', 'end_angle_pi', 'num_frames']
+    for key in required_sweep:
+        if key not in sweep:
+            raise ValueError(f"Missing required sweep_parameters key: {key}")
+    
+    if sweep['num_frames'] <= 0:
+        raise ValueError("num_frames must be positive")
+    
+    # Add validation for julia/orbit modes
+    if cfg['mode'] in ['julia', 'orbit'] and 'julia_set_c' not in cfg:
+        raise ValueError(f"Mode '{cfg['mode']}' requires 'julia_set_c' parameter")
+    
+    return cfg
+
+def setup_iterator_params(config: Dict) -> IteratorParams:
+    """Creates the Numba-compatible IteratorParams object from the config."""
+    scaling = config.get('anisotropy_scaling', {'x': 1.0, 'y': 1.0})
+    spatial = config.get('spatial_lambda', {})
+    use_spatial = spatial.get('enabled', False)
+    
+    sigma = spatial.get('sigma', 1.0)
+    if use_spatial and sigma <= 0:
+        raise ValueError(f"spatial_lambda.sigma must be positive, but got {sigma}")
+        
+    return IteratorParams(
+        scale_x=scaling.get('x', 1.0),
+        scale_y=scaling.get('y', 1.0),
+        use_spatial_lambda=use_spatial,
+        base_lambda=spatial.get('base', 0.99),
+        amp=spatial.get('amplitude', 0.02),
+        sigma_sq=sigma**2 + 1e-12 # Pre-square sigma and add epsilon
+    )
+
+def run_simulation(config: Dict):
+    """Main orchestration function to run the fractal simulation and analysis."""
+    # --- Setup ---
+    mode = config['mode']
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    output_dir = Path(config["output_dir"]) / f"{mode}_{timestamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Outputs will be saved to: {output_dir}")
+
+    thetas_pi = np.linspace(
+        config['sweep_parameters']['start_angle_pi'], 
+        config['sweep_parameters']['end_angle_pi'],
+        config['sweep_parameters']['num_frames'], endpoint=True)
+
+    iter_params = setup_iterator_params(config)
+    win = config['fractal_window']
+    p_plot = config['plotting']
+
+    # --- Analysis Setup ---
+    p_analysis = config.get('analysis', {})
+    do_area_curve = p_analysis.get('generate_area_curve', False)
+    area_fractions = [] if do_area_curve else None
+
+    # --- Main Simulation Loop ---
+    desc = f"Rendering {mode.capitalize()} Frames"
+    for i, th_pi in enumerate(tqdm(thetas_pi, desc=desc)):
+        th_rad = th_pi * np.pi
+        cos_th, sin_th = math.cos(th_rad), math.sin(th_rad)
+        title = f"θ = {th_pi:.4f}π"
+        
+        # --- Data Generation ---
+        if mode in ['mandelbrot', 'julia']:
+            c_julia = complex(*config.get('julia_set_c', [0,0]))
+            img_data = _render_fractal(
+                width=config["image_size"], height=config["image_size"],
+                x_min=win[0], x_max=win[1], y_min=win[2], y_max=win[3],
+                max_iter=config['max_iterations'], cos_th=cos_th, sin_th=sin_th,
+                is_julia=(mode == 'julia'), c_julia=c_julia, iter_params=iter_params
+            )
+            if mode == 'julia': title += f" | c = {c_julia.real:.2f}{c_julia.imag:+.2f}i"
+            if do_area_curve:
+                area_fractions.append(calculate_fractal_metrics(img_data)['trapped_fraction'])
+
+        elif mode == 'orbit':
+            p_orbit = config['orbit_render']
+            c_julia = complex(*config['julia_set_c'])
+            title += f" | c = {c_julia.real:.2f}{c_julia.imag:+.2f}i"
+            orbit_data = _render_orbit(
+                c=c_julia, cos_th=cos_th, sin_th=sin_th,
+                num_points=p_orbit['num_points'], transient_skip=p_orbit['transient_skip'],
+                iter_params=iter_params
+            )
+            # FIXED: Handle resolution properly (single int or list)
+            if orbit_data.size > 1:
+                resolution = p_orbit['resolution']
+                if isinstance(resolution, int):
+                    bins = resolution
+                else:
+                    bins = tuple(resolution)
+                
+                hist, _, _ = np.histogram2d(
+                    orbit_data.real, orbit_data.imag, bins=bins, range=[win[:2], win[2:]]
+                )
+                img_data = hist.T
+            else:
+                img_data = np.zeros((config['image_size'], config['image_size']))
+        
+        # --- Plotting ---
+        plot_and_save_frame(
+            img_data=img_data,
+            frame_path=output_dir / f"frame_{i:04d}.png",
+            title=title, cmap=p_plot['cmap'], dpi=p_plot['dpi'],
+            figsize=tuple(p_plot['animation_figsize']), extent=win,
+            log_norm=(mode == 'orbit') # Use log norm for orbit histograms
+        )
+
+    # --- Post-loop Analysis ---
+    if do_area_curve and area_fractions:
+        print("\nGenerating Trapped Area vs. Angle plot...")
+        generate_area_curve_plot(thetas_pi, area_fractions, output_dir, config)
+
+    print(f"\nSimulation complete.")
+
+def main():
+    """Main entry point: parses args, loads config, and runs the simulation."""
+    # Get the directory where the script is located
+    script_dir = Path(__file__).parent.absolute()
+    default_config = script_dir / "configs" / "default_fractal_spelunker.yaml"
+    
+    parser = argparse.ArgumentParser(description="GEF Fractal Spelunker.",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('--config', '-c', type=Path, 
+                        default=default_config,
+                        help=f"Path to the YAML configuration file. Default: {default_config}")
+    args = parser.parse_args()
+    
+    try:
+        config = load_and_validate_config(args.config)
+        run_simulation(config)
+    except (ValueError, FileNotFoundError, KeyError, yaml.YAMLError) as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"\nUnexpected error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+
+'''
+Here's a refactor that's a polish pass - check why this is so much shorter:
+
+"""
+Fractal Spelunker: A high-performance engine for exploring and analyzing
+fractals derived from the General Euclidean Flow (GEF) model.
+
+Features:
+- Mandelbrot and Julia set rendering.
+- Anisotropic scaling (constant or spatially-varying).
+- Critical orbit visualization.
+- Built-in analysis tools:
+  - Trapped area vs. parameter plots.
+- High-performance core using Numba for JIT compilation.
+- Robust configuration validation and error handling.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import yaml
+from pathlib import Path
+import math
+import time
+from tqdm import tqdm
+import argparse
+import sys
+import traceback
+from typing import Dict, Any
+
+# --- Numba Set-up (graceful fallback) ---
+try:
+    from numba import njit, prange, float64, boolean, complex128
+    from numba.experimental import jitclass
+except ImportError:
+    print("Numba not found → running in pure-Python (will be slow).")
+    def njit(f=None, **kw): return (lambda g: g)(f) if f else (lambda g: g)
+    def jitclass(spec): return lambda cls: cls
+    prange = range
+
+# ==============================================================================
+# 1. PARAMETER DATA STRUCTURES (using @jitclass for Numba)
+# ==============================================================================
+param_spec = [
+    ('scale_x', float64), ('scale_y', float64),
+    ('use_spatial_lambda', boolean),
+    ('base_lambda', float64), ('amp', float64), ('sigma_sq', float64)
+]
+@jitclass(param_spec)
+class IteratorParams:
+    """Numba-compatible data structure to hold fractal iteration parameters."""
+    def __init__(self, scale_x, scale_y, use_spatial_lambda, base_lambda, amp, sigma_sq):
+        self.scale_x = scale_x
+        self.scale_y = scale_y
+        self.use_spatial_lambda = use_spatial_lambda
+        self.base_lambda = base_lambda
+        self.amp = amp
+        self.sigma_sq = sigma_sq
+
+# ==============================================================================
+# 2. CORE FRACTAL ITERATION FUNCTIONS
+# ==============================================================================
+@njit(inline='always')
+def gef_iter(z: complex, c: complex, cos_th: float, sin_th: float, params: IteratorParams) -> complex:
+    """Performs one iteration of the GEF model, handling all anisotropy cases."""
+    if params.use_spatial_lambda:
+        r_squared = min(z.real**2 + z.imag**2, 100.0)
+        lam = params.base_lambda + params.amp * math.exp(-r_squared / params.sigma_sq)
+        scale_y = max(0.1, min(lam, 2.0))
+    else:
+        scale_y = params.scale_y
+
+    rot = cos_th + 1j * sin_th
+    irot = cos_th - 1j * sin_th
+    
+    # 1. Rotate the point
+    z_rot = z * rot
+    # 2. Fold the point (Burning Ship behavior)
+    z_abs = abs(z_rot.real) + 1j * abs(z_rot.imag)
+    # 3. Apply anisotropic scaling
+    z_scaled = z_abs.real * params.scale_x + 1j * z_abs.imag * scale_y
+    # 4. Rotate back
+    z_prime = z_scaled * irot
+    
+    return z_prime * z_prime + c
+
+# ==============================================================================
+# 3. RENDER ENGINES
+# ==============================================================================
+@njit(parallel=True)
+def _render_fractal(width: int, height: int, x_min: float, x_max: float,
+                    y_min: float, y_max: float, max_iter: int, cos_th: float,
+                    sin_th: float, is_julia: bool, c_julia: complex,
+                    iter_params: IteratorParams) -> np.ndarray:
+    """Renders a GEF fractal (Mandelbrot or Julia) using integer escape-time."""
+    img = np.zeros((height, width), dtype=np.uint16)
+    dx = (x_max - x_min) / width
+    dy = (y_max - y_min) / height
+
+    for py in prange(height):
+        y0 = y_min + py * dy
+        for px in range(width):
+            x0 = x_min + px * dx
+            c = c_julia if is_julia else complex(x0, y0)
+            z = complex(x0, y0) if is_julia else 0j
+            
+            for n in range(max_iter):
+                if z.real**2 + z.imag**2 > 4.0:
+                    img[py, px] = n
+                    break
+                z = gef_iter(z, c, cos_th, sin_th, iter_params)
+    return img
+
+@njit
+def _render_orbit(c: complex, cos_th: float, sin_th: float, num_points: int,
+                  transient_skip: int, iter_params: IteratorParams) -> np.ndarray:
+    """Calculates the critical point orbit with robust escape/convergence checks."""
+    orbit_points = np.zeros(num_points, dtype=np.complex128)
+    z = 0j
+    escape_radius_sq = 100.0
+
+    for _ in range(transient_skip):
+        z_prev = z
+        z = gef_iter(z, c, cos_th, sin_th, iter_params)
+        mag_sq = z.real**2 + z.imag**2
+        if mag_sq > escape_radius_sq or not math.isfinite(mag_sq):
+            return np.array([0j])
+        if abs(z - z_prev) < 1e-12:
+            break
+    
+    for i in range(num_points):
+        z = gef_iter(z, c, cos_th, sin_th, iter_params)
+        mag_sq = z.real**2 + z.imag**2
+        if mag_sq > escape_radius_sq or not math.isfinite(mag_sq):
+            return orbit_points[:i]
+        orbit_points[i] = z
+    return orbit_points
+
+# ==============================================================================
+# 4. PLOTTING AND ANALYSIS
+# ==============================================================================
+def plot_and_save_frame(img_data: np.ndarray, frame_path: Path, title: str,
+                        cmap: str, dpi: int, figsize: tuple, extent: list,
+                        log_norm: bool = False):
+    """A centralized utility for plotting and saving a single frame."""
+    fig, ax = plt.subplots(figsize=figsize, facecolor="black")
+    
+    norm = colors.LogNorm(vmin=1, vmax=img_data.max()) if log_norm and img_data.max() > 0 else None
+    ax.imshow(img_data, cmap=cmap, extent=extent, origin='lower', norm=norm)
+    
+    ax.set_title(title, color="white", fontsize=16)
+    ax.axis("off")
+    fig.tight_layout(pad=0)
+    try:
+        plt.savefig(frame_path, facecolor="black", dpi=dpi)
+    finally:
+        plt.close(fig)
+
+def calculate_fractal_metrics(frame_data: np.ndarray) -> Dict[str, float]:
+    """Calculates metrics from a rendered fractal frame."""
+    total_points = frame_data.size
+    escaped_mask = frame_data > 0
+    trapped_points = total_points - np.count_nonzero(escaped_mask)
+    
+    metrics = {'trapped_fraction': trapped_points / total_points}
+    if escaped_mask.any():
+        escaped_values = frame_data[escaped_mask]
+        metrics['mean_escape_time'] = np.mean(escaped_values)
+        metrics['escape_time_std'] = np.std(escaped_values)
+    return metrics
+
+def generate_area_curve_plot(thetas_pi: np.ndarray, area_fractions: list, output_dir: Path, config: Dict):
+    """Generates a plot of trapped area vs. angle, highlighting transitions."""
+    p_analysis = config['analysis']
+    fig, ax = plt.subplots(figsize=tuple(p_analysis.get('area_curve_figsize', [10, 6])))
+    ax.plot(thetas_pi, area_fractions, 'b-', linewidth=2, label='Trapped Area')
+    ax.set_xlabel('Angle (θ/π)', fontsize=14)
+    ax.set_ylabel('Trapped Area Fraction', fontsize=14)
+    ax.set_title('Trapped Area vs. Rotation Angle', fontsize=16)
+    ax.grid(True, alpha=0.3)
+    
+    if len(area_fractions) > 1:
+        area_diff = np.abs(np.diff(area_fractions))
+        threshold = np.mean(area_diff) + 2 * np.std(area_diff)
+        for idx in np.where(area_diff > threshold)[0]:
+            ax.axvline(x=thetas_pi[idx], color='r', linestyle='--', alpha=0.7, label=f'Transition at {thetas_pi[idx]:.3f}π')
+    
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys())
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / "analysis_area_vs_angle.png", dpi=150)
+    plt.close(fig)
+
+# ==============================================================================
+# 5. CONFIGURATION AND ORCHESTRATION
+# ==============================================================================
+def load_and_validate_config(config_path: Path) -> Dict:
+    """Loads and performs extensive validation on the YAML configuration file."""
+    if not config_path.is_file():
+        raise FileNotFoundError(f"Config file not found at '{config_path}'")
+    with config_path.open() as f:
+        cfg = yaml.safe_load(f)
+
+    required = ['mode', 'output_dir', 'image_size', 'fractal_window', 'max_iterations', 'sweep_parameters']
+    for key in required:
+        if key not in cfg: raise ValueError(f"Missing required config key: '{key}'")
+
+    if cfg['mode'] not in ['mandelbrot', 'julia', 'orbit']:
+        raise ValueError(f"Invalid mode: '{cfg['mode']}'. Must be 'mandelbrot', 'julia', or 'orbit'.")
+    if not (16 <= cfg['image_size'] <= 16384):
+        raise ValueError(f"image_size is out of reasonable range (16-16384): {cfg['image_size']}")
+    if len(cfg['fractal_window']) != 4:
+        raise ValueError("fractal_window must have 4 values: [x_min, x_max, y_min, y_max]")
+    
+    sweep = cfg['sweep_parameters']
+    required_sweep = ['start_angle_pi', 'end_angle_pi', 'num_frames']
+    for key in required_sweep:
+        if key not in sweep: raise ValueError(f"Missing sweep_parameters key: '{key}'")
+    if sweep['num_frames'] <= 0: raise ValueError("num_frames must be positive")
+    
+    if cfg['mode'] in ['julia', 'orbit'] and 'julia_set_c' not in cfg:
+        raise ValueError(f"Mode '{cfg['mode']}' requires 'julia_set_c' parameter in config.")
+    
+    return cfg
+
+def setup_iterator_params(config: Dict) -> IteratorParams:
+    """Creates the Numba-compatible IteratorParams object from the config."""
+    scaling = config.get('anisotropy_scaling', {'x': 1.0, 'y': 1.0})
+    spatial = config.get('spatial_lambda', {})
+    use_spatial = spatial.get('enabled', False)
+    
+    sigma = spatial.get('sigma', 1.0)
+    if use_spatial and sigma <= 0:
+        raise ValueError(f"spatial_lambda.sigma must be positive, but got {sigma}")
+        
+    return IteratorParams(
+        scale_x=scaling.get('x', 1.0), scale_y=scaling.get('y', 1.0),
+        use_spatial_lambda=use_spatial, base_lambda=spatial.get('base', 0.99),
+        amp=spatial.get('amplitude', 0.02), sigma_sq=sigma**2 + 1e-12
+    )
+
+def run_simulation(config: Dict):
+    """Main orchestration function to run the fractal simulation and analysis."""
+    mode = config['mode']
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    output_dir = Path(config["output_dir"]) / f"{mode}_{timestamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Outputs will be saved to: {output_dir}")
+
+    thetas_pi = np.linspace(
+        config['sweep_parameters']['start_angle_pi'], 
+        config['sweep_parameters']['end_angle_pi'],
+        config['sweep_parameters']['num_frames'], endpoint=True)
+    
+    iter_params = setup_iterator_params(config)
+    win, p_plot = config['fractal_window'], config['plotting']
+    p_analysis = config.get('analysis', {})
+    do_area_curve = p_analysis.get('generate_area_curve', False)
+    area_fractions = [] if do_area_curve else None
+
+    desc = f"Rendering {mode.capitalize()} Frames"
+    for i, th_pi in enumerate(tqdm(thetas_pi, desc=desc)):
+        th_rad, cos_th, sin_th = th_pi * np.pi, math.cos(th_pi * np.pi), math.sin(th_pi * np.pi)
+        title = f"θ = {th_pi:.4f}π"
+        
+        if mode in ['mandelbrot', 'julia']:
+            c_julia = complex(*config.get('julia_set_c', [0, 0]))
+            img_data = _render_fractal(config["image_size"], config["image_size"], *win,
+                                       config['max_iterations'], cos_th, sin_th,
+                                       (mode == 'julia'), c_julia, iter_params)
+            if mode == 'julia': title += f" | c = {c_julia.real:.2f}{c_julia.imag:+.2f}i"
+            if do_area_curve: area_fractions.append(calculate_fractal_metrics(img_data)['trapped_fraction'])
+
+        elif mode == 'orbit':
+            p_orbit = config['orbit_render']
+            c_julia = complex(*config['julia_set_c'])
+            title += f" | c = {c_julia.real:.2f}{c_julia.imag:+.2f}i"
+            orbit_data = _render_orbit(c_julia, cos_th, sin_th, p_orbit['num_points'],
+                                       p_orbit['transient_skip'], iter_params)
+            if orbit_data.size > 1:
+                bins = p_orbit['resolution'] if isinstance(p_orbit['resolution'], int) else tuple(p_orbit['resolution'])
+                hist, _, _ = np.histogram2d(orbit_data.real, orbit_data.imag, bins=bins, range=[win[:2], win[2:]])
+                img_data = hist.T
+            else:
+                img_data = np.zeros((config['image_size'], config['image_size']))
+        
+        plot_and_save_frame(img_data, output_dir / f"frame_{i:04d}.png", title,
+                            p_plot['cmap'], p_plot['dpi'], tuple(p_plot['animation_figsize']),
+                            win, log_norm=(mode == 'orbit'))
+
+    if do_area_curve and area_fractions:
+        print("\nGenerating Trapped Area vs. Angle plot...")
+        generate_area_curve_plot(thetas_pi, area_fractions, output_dir, config)
+
+    print(f"\nSimulation complete.")
+
+def main():
+    """Main entry point: parses args, loads config, and runs the simulation."""
+    script_dir = Path(__file__).parent.absolute()
+    default_config = script_dir / "configs" / "default_fractal_spelunker.yaml"
+    
+    parser = argparse.ArgumentParser(description="GEF Fractal Spelunker.",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('--config', '-c', type=Path, default=default_config,
+                        help=f"Path to the YAML configuration file.\nDefault: {default_config}")
+    args = parser.parse_args()
+    
+    try:
+        config = load_and_validate_config(args.config)
+        run_simulation(config)
+    except (ValueError, FileNotFoundError, KeyError, yaml.YAMLError) as e:
+        print(f"\nConfiguration or Input Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"\nAn unexpected error occurred: {e}", file=sys.stderr)
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+'''

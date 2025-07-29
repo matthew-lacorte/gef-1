@@ -37,6 +37,7 @@ class ConstantInfo(BaseModel):
     """
     Metadata and value(s) for a single GEF framework constant.
     """
+    
     name: str = Field(..., description="Symbolic name of the constant.")
     symbol: Optional[sp.Basic] = Field(None, description="SymPy symbol for analytic calculations.")
     value: Optional[float] = Field(None, description="Default or reference numeric value.")
@@ -49,6 +50,7 @@ class ConstantInfo(BaseModel):
 
     class Config:
         frozen = True
+        arbitrary_types_allowed = True
 
     @field_validator("value")
     def value_must_be_positive(cls, v):
@@ -75,6 +77,7 @@ m   = sp.Symbol('m', real=True, positive=True)
 c   = sp.Symbol('c', real=True, positive=True)
 m_0 = sp.Symbol('m_0', real=True, positive=True)
 electron_volt = sp.Symbol('electron_volt', real=True, positive=True)
+planck = sp.Symbol('planck', real=True, positive=True)  # Planck constant
 
 CONSTANTS: List[ConstantInfo] = [
     ConstantInfo(
@@ -121,6 +124,15 @@ CONSTANTS: List[ConstantInfo] = [
         description="Emergent rest mass derived from the model (not fundamental).",
         category="derived constant",
         sidecar_path="physics/constants/m_0.md"
+    ),
+    ConstantInfo(
+        name="planck",
+        symbol=planck,
+        value=6.626_070_15e-34,  # CODATA 2019 exact value
+        units="J·s",
+        description="Planck constant (h) - fundamental constant of quantum mechanics.",
+        category="derived constant",
+        sidecar_path="physics/constants/planck.md"
     ),
 ]
 

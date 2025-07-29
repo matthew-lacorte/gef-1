@@ -1,0 +1,31 @@
+# Configuration for the Benford's Law Analysis (GEF Isomorphism Test)
+
+# --- Input Data ---
+# Path to the .npy file containing the raw energy data from a GEF Stability Map simulation.
+# Note: For now, we will generate placeholder data as this file doesn't exist yet.
+# In a real run, you would change 'generate_fake_data' to 'False' and provide a real path.
+input_data:
+  generate_fake_data: True
+  # real_data_path: 'data/processed/gef_maps/gef_map_2025-XX-XX/stability_map_raw_data.npy'
+  num_fake_points: 50000 # Number of data points for the placeholder data
+
+# --- Control Group ---
+# Parameters for generating the control group (uniform random) data.
+control_group:
+  num_points: 50000
+  low_bound: 1.0
+  high_bound: 10000.0
+
+# --- Output ---
+# Where to save the final plot.
+output_dir: 'data/analysis/benford_law/'
+plot_filename: 'benford_fit_comparison.png'
+
+# --- Plotting Parameters ---
+plotting:
+  figsize: [16, 7]
+  dpi: 300
+  title_fontsize: 16
+  label_fontsize: 14
+  legend_fontsize: 12
+  cmap: 'viridis' # Just in case we need it later

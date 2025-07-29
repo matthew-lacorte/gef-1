@@ -1,0 +1,64 @@
+# Configuration for the GEF Fractal "Healing" Simulation v2
+# This experiment visualizes how stable structures emerge as a
+# chaotic, non-analytic system is "healed" by a stabilizing field.
+
+# --- Render Mode ---
+# 'mandelbrot': Renders the full parameter space (the "Fountain").
+# 'julia':      Renders the dynamics for a single point 'c'.
+# 'orbit':      Renders the attractor/orbit for a single point 'c'.
+mode: 'mandelbrot'
+
+# --- Julia/Orbit Set Parameters (used ONLY in 'julia' and 'orbit' modes) ---
+julia_set_c: [-0.6, 0.8]
+
+# --- Core Physics Parameters ---
+# Anisotropic Scaling: (1.0, 1.0) is isotropic. (1.0, 0.6) is a key discovery.
+anisotropy_scaling:
+  x: 1.0
+  y: 0.6
+
+# Spatially-varying anisotropy: λ(z) = base + amplitude * exp(-(z.real²+z.imag²)/sigma²)
+# This creates regions of different "vacuum flow" that affect the fractal structure
+spatial_lambda:
+  enabled: false  # Set to true to enable spatially-varying anisotropy
+  base: 0.92      # Base anisotropy value
+  amplitude: 0.1  # Amplitude of the spatial variation
+  sigma: 1.0      # Width of the Gaussian variation
+
+# Misalignment Angle Sweep: We will sweep from a chaotic state (e.g., θ = π/2)
+# towards the stable state (θ = 0). This shows the "healing" process.
+sweep_parameters:
+  start_angle_pi: 0.75    # Start angle in units of π
+  end_angle_pi: 0.75     # End angle in units of π  
+  num_frames: 1        # Number of frames for the animation
+
+# --- Simulation & Render Quality ---
+image_size: 8192       # Reduced for testing - increase to 4096 for production
+max_iterations: 250
+fractal_window: [-2.4, 2.4, -1.8, 1.8]  # [x_min, x_max, y_min, y_max]
+
+# Parameters for 'orbit' mode
+orbit_render:
+  num_points: 500000
+  transient_skip: 500
+  resolution: 8192
+
+# --- Output & Plotting ---
+output_dir: '/Volumes/VFX/GEF/data/analysis/fractal_spelunker'
+plotting:
+  animation_figsize: [32, 32]
+  cmap: 'magma'
+    # 'hot' is also fun
+  dpi: 220
+
+# --- Analysis Options ---
+analysis:
+  # Generate difference images between consecutive frames
+  generate_diff_frames: false
+  diff_cmap: 'coolwarm'         # Colormap for difference images
+  diff_vmin: -5                 # Min value for difference colormap
+  diff_vmax: 5                  # Max value for difference colormap
+  
+  # Generate area vs theta curve
+  generate_area_curve: false     # Enabled for analysis
+  area_curve_figsize: [12, 8]   # Figure size for area curve plot

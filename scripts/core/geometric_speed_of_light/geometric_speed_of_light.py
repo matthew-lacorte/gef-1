@@ -24,13 +24,18 @@ import sympy as sp
 # GEF infrastructure imports
 from gef.core.logging import logger, setup_logfile
 from gef.core.constants import CONSTANTS_DICT
-from gef.core.utils.validators import asdict, positive_value
+from gef.core.validators import asdict, positive_value
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Physical constants (CODATA 2019 exact values)
-c = CONSTANTS_DICT["c"]
-planck = CONSTANTS_DICT["planck"]
-electron_volt = CONSTANTS_DICT["electron_volt"]
+c_const = CONSTANTS_DICT["c"]
+planck_const = CONSTANTS_DICT["planck"]
+electron_volt_const = CONSTANTS_DICT["electron_volt"]
+
+# Extract the actual values for calculations
+c = c_const.value if c_const.value is not None else 299_792_458  # Default to c in m/s if not set
+planck = planck_const.value
+electron_volt = electron_volt_const.value
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Computation helpers

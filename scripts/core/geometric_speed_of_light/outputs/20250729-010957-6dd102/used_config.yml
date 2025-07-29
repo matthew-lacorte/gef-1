@@ -1,9 +1,7 @@
-mode: "single"
-
+mode: sweep
 single:
   mass_MeV: 200.0
-
 sweep:
   start_MeV: 150.0
-  stop_MeV: 250.0
   step_MeV: 10.0
+  stop_MeV: 250.0
