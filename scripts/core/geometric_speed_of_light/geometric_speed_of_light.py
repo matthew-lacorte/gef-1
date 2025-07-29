@@ -20,14 +20,11 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 import sympy as sp
 
-# Add the project root to the Python path to allow imports from src
-project_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(project_root))
-
 # ──────────────────────────────────────────────────────────────────────────────
 # GEF infrastructure imports
-from src.gef.core.logging import logger, setup_logfile
-from src.gef.core.constants import CONSTANTS_DICT
+from gef.core.logging import logger, setup_logfile
+from gef.core.constants import CONSTANTS_DICT
+from gef.core.utils.validators import asdict, positive_value
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Physical constants (CODATA 2019 exact values)

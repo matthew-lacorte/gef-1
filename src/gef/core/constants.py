@@ -26,8 +26,8 @@ import sympy as sp
 import pint
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
-from gef_core.utils.validators import asdict, positive_value
-from gef_core.enums import ConstantCategory
+from gef.core.validators import asdict, positive_value
+from gef.core.enums import ConstantCategory
 
 sidecar_path = f"vault/50-sidecars/{__name__}/"
 
