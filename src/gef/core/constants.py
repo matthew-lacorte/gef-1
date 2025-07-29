@@ -74,6 +74,7 @@ b_0 = sp.Symbol('b_0', real=True, positive=True)
 m   = sp.Symbol('m', real=True, positive=True)
 c   = sp.Symbol('c', real=True, positive=True)
 m_0 = sp.Symbol('m_0', real=True, positive=True)
+electron_volt = sp.Symbol('electron_volt', real=True, positive=True)
 
 CONSTANTS: List[ConstantInfo] = [
     ConstantInfo(
@@ -104,9 +105,18 @@ CONSTANTS: List[ConstantInfo] = [
         sidecar_path="physics/constants/c.md"
     ),
     ConstantInfo(
+        name="electron_volt",
+        symbol=electron_volt,#J?
+        value=1.602_176_634e-19, 
+        units="energy",
+        description="Emergent electron volt derived from the model (not fundamental).",
+        category="derived constant",
+        sidecar_path="physics/constants/electron_volt.md"
+    ),
+    ConstantInfo(
         name="m_0",
         symbol=m_0,
-        value=None,
+        value=1.602_176_634e-19,
         units="mass",
         description="Emergent rest mass derived from the model (not fundamental).",
         category="derived constant",

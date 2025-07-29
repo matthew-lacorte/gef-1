@@ -1,0 +1,9 @@
+numpy
+sympy
+pyyaml
+loguru
+
+[dev]
+black
+ruff
+pytest
