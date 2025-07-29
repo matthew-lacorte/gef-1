@@ -13,14 +13,13 @@ Symbolic constants use sympy for analytic derivations. Numeric values, descripti
 Auto-generated doc sidecars can be built using `constants_info()`.
 """
 
-__version__ = "0.1.0"
-
 __all__ = [
     "ConstantInfo",
     "CONSTANTS",
     "CONSTANTS_DICT",
     "constants_info",
     "b_0", "m", "c", "m_0"
+    "__version__",
 ]
 
 import sympy as sp
@@ -28,6 +27,7 @@ import pint
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 from gef_core.utils.validators import asdict, positive_value
+from gef_core.enums import ConstantCategory
 
 sidecar_path = f"vault/50-sidecars/{__name__}/"
 
@@ -41,9 +41,11 @@ class ConstantInfo(BaseModel):
     symbol: Optional[sp.Basic] = Field(None, description="SymPy symbol for analytic calculations.")
     value: Optional[float] = Field(None, description="Default or reference numeric value.")
     units: str = Field("", description="Units of the constant.")
+        # q = ureg.Quantity(1, "meter/second")
+        # print(q.to_compact())  # e.g., 1 m/s
     description: str = Field("", description="Brief description for docs.")
     sidecar_path: Optional[str] = Field(None, description="Relative path to this constant’s Obsidian .md sidecar file.")
-    category: Optional[str] = Field(None, description="Grouping/tag/category for filtering (optional).")
+    category: Optional[ConstantCategory] = Field(None, description="Grouping/tag/category for filtering (optional).")
 
     class Config:
         frozen = True
@@ -87,7 +89,7 @@ CONSTANTS: List[ConstantInfo] = [
         name="m",
         symbol=m,
         value=1.0,
-        units="arbitrary",
+        units="dimensionless",
         description="Euclidean mass parameter in the foundational GEF model.",
         category="model parameter",
         sidecar_path="physics/constants/m.md"

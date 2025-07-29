@@ -1,0 +1,3 @@
+[project.scripts]
+gef = "gef.cli:app"
+

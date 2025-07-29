@@ -7,6 +7,7 @@ Exports:
     - setup_json_logfile: Add a JSON-format log file for machine parsing.
 """
 
+import os
 from loguru import logger
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
 ]
 
 def setup_logfile(
+    # os.makedirs(os.path.dirname(log_path), exist_ok=True)
     log_path: str,
     rotation: str = "10 MB",
     retention: str = "10 days",
@@ -36,6 +38,7 @@ def setup_logfile(
     """
     logger.add(
         log_path,
+        # logger.info(f"GEF version: {get_version()}, Git commit: {get_commit()}, Config: {get_config_str()}")
         rotation=rotation,
         retention=retention,
         compression=compression,
