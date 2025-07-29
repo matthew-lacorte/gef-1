@@ -1,0 +1,36 @@
+# Default configuration for GEF stability map generation
+# This performs a 2D parameter sweep and generates a stability heatmap
+
+# First parameter to sweep (x-axis)
+param1:
+  name: "g_squared"  # Anisotropic coupling strength
+  start: 0.0
+  stop: 5.0
+  num_points: 50
+
+# Second parameter to sweep (y-axis)
+param2:
+  name: "P_env"  # Environmental pressure
+  start: -1.0
+  stop: 1.0
+  num_points: 50
+
+# Stability calculation settings
+stability:
+  # Maximum number of iterations for each configuration
+  max_iterations: 10000
+  
+  # Convergence threshold for stability determination
+  convergence_threshold: 1.0e-6
+  
+  # Early exit energy threshold (configurations with energy above this are unstable)
+  early_exit_energy_threshold: 0.0
+
+# Visualization settings
+visualization:
+  # Title for the stability map
+  title: "GEF Stability Map: g_squared vs P_env"
+  
+  # Colormap for the stability metric
+  # Options: "custom", "viridis", "plasma", "inferno", "magma", "cividis"
+  colormap: "custom"
