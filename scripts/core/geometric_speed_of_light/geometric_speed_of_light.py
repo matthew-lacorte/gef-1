@@ -41,7 +41,7 @@ electron_volt = electron_volt_const.value
 # Computation helpers
 def compute_radius(mass_MeV: float) -> Tuple[float, float, float]:
     """
-    Return (frequency Hz, tick s, radius m) for a given rest mass in MeV/c².
+    Return (frequency Hz, tick s, radius m) for a given rest mass in MeV/c².
     """
     E_P = mass_MeV * 1e6 * electron_volt          # J
     f_P = E_P / planck                            # Hz
