@@ -7,6 +7,6 @@ single:
   mass_MeV: 200.0
 
 sweep:
-  start_MeV: 150.0
-  stop_MeV: 250.0
-  step_MeV: 10.0
+  start_MeV: 190.0
+  stop_MeV: 200.0
+  step_MeV: 1.0

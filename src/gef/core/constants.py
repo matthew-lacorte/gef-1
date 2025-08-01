@@ -101,6 +101,7 @@ CONSTANTS: List[ConstantInfo] = [
         name="kappa",
         symbol=kappa,
         value=1e-61, # Approximate value from Dark Energy density
+        # TODO: kappa Value: The value 1e-61 is correct for κ itself, but the b_0 value np.sqrt(1 + 1e-122) implies that you're using kappa**2 in the b_0 formula. This is correct, but it's worth a comment to make the κ vs κ² relationship explicit in the b_0 description.
         description="Dimensionless cosmic anisotropy flow, the source of the arrow of time.",
         category=ConstantCategory.MODEL_PARAMETER,
         sidecar_path="sidecar_constant_kappa.md"
@@ -177,7 +178,7 @@ CONSTANTS: List[ConstantInfo] = [
     ),
     ConstantInfo(
         name="h_planck",
-        symbol=h_planck,
+        symbol=h_planck, # TODO: Consider h_bar instead
         value=6.626_070_15e-34,
         units="joule*second",
         description="The Planck constant (exact by definition).",

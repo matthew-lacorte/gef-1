@@ -27,15 +27,15 @@ from gef.core.constants import CONSTANTS_DICT
 from gef.core.validators import asdict, positive_value
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Physical constants (CODATA 2019 exact values)
+# Physical constants from the GEF constants system
 c_const = CONSTANTS_DICT["c"]
-planck_const = CONSTANTS_DICT["planck"]
-electron_volt_const = CONSTANTS_DICT["electron_volt"]
+planck_const = CONSTANTS_DICT["h_planck"]
+electron_volt_const = CONSTANTS_DICT["eV"]
 
 # Extract the actual values for calculations
 c = c_const.value if c_const.value is not None else 299_792_458  # Default to c in m/s if not set
-planck = planck_const.value
-electron_volt = electron_volt_const.value
+planck = planck_const.value if planck_const.value is not None else 6.626_070_15e-34  # Default value
+electron_volt = electron_volt_const.value if electron_volt_const.value is not None else 1.602_176_634e-19  # Default value
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Computation helpers
@@ -56,9 +56,15 @@ def mass_iterator(cfg: dict) -> Iterable[float]:
     mode = cfg.get("mode", "single").lower()
     if mode == "single":
         try:
-            m_info = CONSTANTS_DICT["m_PlanckParticle"]
-            yield m_info.value
+            # Try to use the GEF Planck Particle mass from constants if available
+            m_info = CONSTANTS_DICT.get("m_GEF_PP") or CONSTANTS_DICT.get("m_PlanckParticle")
+            if m_info and m_info.value is not None:
+                yield m_info.value
+            else:
+                # Fall back to config value
+                yield cfg["single"]["mass_MeV"]
         except KeyError:
+            # Fall back to config value
             yield cfg["single"]["mass_MeV"]
     elif mode == "sweep":
         s = cfg["sweep"]
