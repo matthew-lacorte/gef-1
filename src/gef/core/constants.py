@@ -6,11 +6,7 @@ Exports:
     - CONSTANTS: List of ConstantInfo entries.
     - CONSTANTS_DICT: Dict mapping name to ConstantInfo.
     - constants_info: Utility to extract/export all constants and their documentation.
-    - b_0, m, c, m_0: Symbolic sympy constants for analytic derivations.
-
-Symbolic constants use sympy for analytic derivations. Numeric values, descriptions, and units are managed via Pydantic for safety and automated documentation.
-
-Auto-generated doc sidecars can be built using `constants_info()`.
+    - b_0, m, c, h_planck, alpha_em, lambda_G, h_hook, m_PlanckParticle, eV: Symbolic sympy constants.
 """
 
 __all__ = [
@@ -18,12 +14,14 @@ __all__ = [
     "CONSTANTS",
     "CONSTANTS_DICT",
     "constants_info",
-    "b_0", "m", "c", "m_0"
+    "b_0", "m", "c", "h_planck", "alpha_em",
+    "lambda_G", "h_hook", "m_PlanckParticle", "eV",
     "__version__",
 ]
 
 import sympy as sp
 import pint
+import numpy as np
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 from gef.core.validators import asdict, positive_value
@@ -42,8 +40,6 @@ class ConstantInfo(BaseModel):
     symbol: Optional[sp.Basic] = Field(None, description="SymPy symbol for analytic calculations.")
     value: Optional[float] = Field(None, description="Default or reference numeric value.")
     units: str = Field("", description="Units of the constant.")
-        # q = ureg.Quantity(1, "meter/second")
-        # print(q.to_compact())  # e.g., 1 m/s
     description: str = Field("", description="Brief description for docs.")
     sidecar_path: Optional[str] = Field(None, description="Relative path to this constant’s Obsidian .md sidecar file.")
     category: Optional[ConstantCategory] = Field(None, description="Grouping/tag/category for filtering (optional).")
@@ -71,17 +67,25 @@ class ConstantInfo(BaseModel):
             return self.value * ureg(self.units)
         return None
 
-# Symbolic declarations
+# --- Symbolic Declarations ---
+# GEF Model Parameters
 b_0 = sp.Symbol('b_0', real=True, positive=True)
-m   = sp.Symbol('m', real=True, positive=True)
-c   = sp.Symbol('c', real=True, positive=True)
-m_0 = sp.Symbol('m_0', real=True, positive=True)
-electron_volt = sp.Symbol('electron_volt', real=True, positive=True)
+m = sp.Symbol('m', real=True, positive=True)
 m_PlanckParticle = sp.Symbol('m_PlanckParticle', real=True, positive=True)
+lambda_G = sp.Symbol('lambda_G', real=True, positive=True)
+h_hook = sp.Symbol('h', real=True, positive=True)
+
+# Fundamental & Conversion Constants
+c = sp.Symbol('c', real=True, positive=True)
+h_planck = sp.Symbol('h_planck', real=True, positive=True)
+eV = sp.Symbol('eV', real=True, positive=True)
+alpha_em = sp.Symbol('alpha_em', real=True, positive=True)
 
 
-# Define all constants in a single list
+# --- Constant Definitions ---
+# The single source of truth for all framework constants.
 CONSTANTS: List[ConstantInfo] = [
+    # --- GEF Model Parameters ---
     ConstantInfo(
         name="b_0",
         symbol=b_0,
@@ -101,71 +105,84 @@ CONSTANTS: List[ConstantInfo] = [
         sidecar_path="physics/constants/m.md"
     ),
     ConstantInfo(
-        name="c",
-        symbol=c,
-        value=None,
-        units="speed",
-        description="Emergent speed of light derived from the model (not fundamental).",
-        category="derived constant",
-        sidecar_path="physics/constants/c.md"
+        name="m_PlanckParticle",
+        symbol=m_PlanckParticle,
+        value=200.0,
+        units="MeV",
+        description="GEF canonical Planck-particle rest-energy scale.",
+        category="model parameter",
+        sidecar_path="physics/constants/m_PlanckParticle.md"
     ),
     ConstantInfo(
-        name="electron_volt",
-        symbol=electron_volt,#J?
-        value=1.602_176_634e-19, 
-        units="energy",
-        description="Emergent electron volt derived from the model (not fundamental).",
-        category="derived constant",
-        sidecar_path="physics/constants/electron_volt.md"
+        name="lambda_G",
+        symbol=lambda_G,
+        value=157.91 / 137.036, # ~1.1523
+        units="dimensionless",
+        description="GEF self-coupling constant, derived from the fine-structure constant under the Unity Hypothesis.",
+        category="model parameter",
+        sidecar_path="physics/constants/lambda_G.md"
     ),
     ConstantInfo(
-        name="m_0",
-        symbol=m_0,
-        value=1.602_176_634e-19,
-        units="mass",
-        description="Emergent rest mass derived from the model (not fundamental).",
-        category="derived constant",
-        sidecar_path="physics/constants/m_0.md"
+        name="h_hook",
+        symbol=h_hook,
+        value=None, # Value to be determined
+        units="joule**0.5 * meter", # Based on Lagrangian term analysis
+        description="Hook Coupling Constant, defining the energy cost of topological complexity.",
+        category="model parameter",
+        sidecar_path="physics/constants/h_hook.md"
     ),
-    # Updated constants for physics calculations
+
+    # --- Fundamental Constants ---
     ConstantInfo(
         name="c",
         symbol=c,
         value=299_792_458,
         units="meter/second",
-        description="Speed of light in vacuum (CODATA 2019 exact).",
+        description="Speed of light in vacuum (exact by definition).",
         category="fundamental",
         sidecar_path="physics/constants/c.md"
     ),
     ConstantInfo(
-        name="planck",
-        symbol=sp.Symbol('h'),
+        name="h_planck",
+        symbol=h_planck,
         value=6.626_070_15e-34,
         units="joule*second",
-        description="Planck constant (CODATA 2019 exact).",
+        description="The Planck constant (exact by definition).",
         category="fundamental",
         sidecar_path="physics/constants/planck.md"
     ),
     ConstantInfo(
-        name="electron_volt",
-        symbol=electron_volt,
+        name="alpha_em",
+        symbol=alpha_em,
+        value=1 / 137.035999084, # CODATA 2018
+        units="dimensionless",
+        description="Fine-structure constant, the coupling constant for the electromagnetic force.",
+        category="fundamental",
+        sidecar_path="physics/constants/alpha_em.md"
+    ),
+    ConstantInfo(
+        name="GEF_LOOP_FACTOR",
+        symbol=None, # Not a symbolic constant
+        value=16 * np.pi**2, # ~157.91
+        units="dimensionless",
+        description="Geometric loop factor (16π²) used in the derivation of induced electromagnetic coupling.",
+        category="derived constant",
+        sidecar_path="physics/constants/gef_loop_factor.md"
+    ),
+    
+    # --- Conversion Factors ---
+    ConstantInfo(
+        name="eV",
+        symbol=eV,
         value=1.602_176_634e-19,
         units="joule",
-        description="Electron volt in joules (CODATA 2019 exact).",
+        description="Electron volt energy unit in terms of joules (exact by definition).",
         category="conversion",
         sidecar_path="physics/constants/electron_volt.md"
     ),
-    ConstantInfo(
-        name="m_PlanckParticle",
-        symbol=m_PlanckParticle,
-        value=200.0,               # MeV
-        units="MeV",
-        description="GEF canonical Planck‑particle rest‑energy scale.",
-        category="model parameter",
-        sidecar_path="physics/constants/m_PlanckParticle.md"
-    ),
 ]
 
+# --- Dictionary and Utility Function ---
 CONSTANTS_DICT: Dict[str, ConstantInfo] = {const.name: const for const in CONSTANTS}
 
 def constants_info(as_dict: bool = False):

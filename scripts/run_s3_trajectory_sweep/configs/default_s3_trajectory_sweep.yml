@@ -1,0 +1,117 @@
+# Default configuration for S³ trajectory sweep
+# This config defines parameters for calculating trajectories on S³ manifolds
+
+# --- S³ Manifold Configuration ---
+manifold:
+  # Radius of the S³ sphere
+  radius: 1.0
+  
+  # Embedding dimension (should be 4 for S³)
+  embedding_dim: 4
+  
+  # Coordinate system
+  # Options: 'cartesian', 'hyperspherical'
+  coordinate_system: "hyperspherical"
+
+# --- Trajectory Parameters ---
+trajectory:
+  # Integration method
+  # Options: 'rk4', 'euler', 'leapfrog'
+  integration_method: "rk4"
+  
+  # Integration timestep
+  dt: 0.01
+  
+  # Number of steps
+  num_steps: 10000
+  
+  # Energy conservation tolerance
+  energy_tolerance: 1.0e-6
+
+# --- Sweep Parameters ---
+sweep:
+  # Parameter to sweep
+  # Options: 'initial_position', 'initial_velocity', 'manifold_radius'
+  parameter: "initial_position"
+  
+  # Sweep ranges for different parameters
+  initial_position:
+    # Hyperspherical coordinates [chi, theta, phi]
+    chi:
+      start: 0.0
+      stop: 3.14159
+      num_points: 10
+    theta:
+      start: 0.0
+      stop: 3.14159
+      num_points: 10
+    phi:
+      start: 0.0
+      stop: 6.28318
+      num_points: 10
+      
+  initial_velocity:
+    # Velocity magnitude
+    magnitude:
+      start: 0.1
+      stop: 1.0
+      num_points: 10
+    # Velocity direction (spherical coordinates)
+    theta:
+      start: 0.0
+      stop: 3.14159
+      num_points: 5
+    phi:
+      start: 0.0
+      stop: 6.28318
+      num_points: 5
+      
+  manifold_radius:
+    start: 0.5
+    stop: 2.0
+    num_points: 10
+
+# --- Analysis Parameters ---
+analysis:
+  # Detect periodic orbits
+  detect_periodicity: true
+  
+  # Periodicity detection tolerance
+  periodicity_tolerance: 0.01
+  
+  # Calculate Lyapunov exponents for stability analysis
+  calculate_lyapunov: true
+  
+  # Classify trajectory types
+  classify_trajectories: true
+  
+  # Trajectory classification parameters
+  classification:
+    periodic_threshold: 0.01
+    chaotic_threshold: 0.1
+
+# --- Visualization ---
+visualization:
+  # Dimension reduction method for visualization
+  # Options: 'stereographic', 'pca', 'tsne'
+  projection_method: "stereographic"
+  
+  # Animation settings
+  animation:
+    type: "tumbler"  # 'tumbler' or 'w-slice'
+    frames: 120
+    fps: 30
+    
+  # Figure settings
+  figsize: [10, 10]
+  dpi: 150
+  
+  # Color settings for different trajectory types
+  colors:
+    periodic: "blue"
+    quasi_periodic: "green"
+    chaotic: "red"
+    
+  # Enable parallel rendering using multiprocessing
+  parallel_rendering: true
+  num_processes: 8
