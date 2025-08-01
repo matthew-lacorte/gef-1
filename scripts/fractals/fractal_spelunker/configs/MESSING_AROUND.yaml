@@ -57,6 +57,7 @@ plotting:
   cmap: 'magma'
     # 'hot' is also fun
   dpi: 200
+  normalization: 'percentile' # Options: 'linear', 'relative', 'percentile'
 
 # --- Analysis Options ---
 analysis:
