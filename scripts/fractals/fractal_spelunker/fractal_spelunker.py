@@ -176,7 +176,7 @@ def plot_and_save_frame(img_data: np.ndarray,
         # Percentile-based normalization - more robust to outliers
         # Uses 1st and 99th percentiles to avoid extreme values
         if img_data.size > 0:
-            vmin, vmax = np.percentile(img_data, [0.2, 99.8])
+            vmin, vmax = np.percentile(img_data, [0.05, 99.95])
             if vmin == vmax:  # Handle edge case
                 norm = None
             else:

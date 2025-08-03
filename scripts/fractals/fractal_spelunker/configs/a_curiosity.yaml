@@ -39,9 +39,9 @@ sweep_parameters:
   num_frames: 1        # Number of frames for the animation
 
 # --- Simulation & Render Quality ---
-image_size: 8192       # Reduced for testing - increase to 4096 for production
-max_iterations: 6000
-fractal_window: [1.0973, 1.099, -0.4014, -0.4004] # (Xmin, Xmax, Ymin, Ymax)
+image_size: 2048       # Reduced for testing - increase to 4096 for production
+max_iterations: 200
+fractal_window: [1.087, 1.115, -0.41, -0.395] # (Xmin, Xmax, Ymin, Ymax)
 
 # Parameters for 'orbit' mode
 
@@ -56,7 +56,7 @@ plotting:
   animation_figsize: [16, 16]
   cmap: 'magma'
     # 'hot' is also fun
-  dpi: 400
+  dpi: 100
   normalization: 'percentile' # Options: 'linear', 'relative', 'percentile'
 
 # --- Analysis Options ---
@@ -70,4 +70,3 @@ analysis:
   # Generate area vs theta curve
   generate_area_curve: false     # Enabled for analysis
   area_curve_figsize: [12, 8]   # Figure size for area curve plot
-

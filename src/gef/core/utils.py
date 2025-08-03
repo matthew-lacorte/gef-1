@@ -57,3 +57,8 @@ def make_output_dir(script_name, base_output_dir=None):
     out_dir = out_base / f"{timestamp}-{run_id}"
     out_dir.mkdir(parents=True, exist_ok=False)
     return out_dir
+
+def create_analysis_output_dir(script_name: str, base_dir: Path = None) -> Path:
+    """Standard output directory creation for all scripts."""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    

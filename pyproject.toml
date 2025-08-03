@@ -12,9 +12,16 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
-    "sympy",
+    "sympy", 
     "pyyaml",
     "loguru",
+    "pydantic>=2.0",  # You're using v2 features
+    "typer",          # For CLI
+    "rich",           # For pretty CLI output
+    "matplotlib",     # Your scripts need this
+    "scipy",          # For numerical work
+    "numba",          # For performance
+    "pint",           # For units (you import but don't require)
 ]
 
 [project.optional-dependencies]
@@ -25,7 +32,7 @@ dev = [
 ]
 
 [project.scripts]
-gef = "gef.cli:app"
+gef = "gef.cli.main:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
