@@ -1,6 +1,6 @@
 # gef/cli/constants.py
 import typer
-from gef.constants import CONSTANTS_DICT
+from gef.core.constants import CONSTANTS_DICT
 from rich import print  # Optional: nice formatting
 
 constants_app = typer.Typer(help="View and manage model/derived constants.")
