@@ -16,8 +16,7 @@ dependencies = [
     "pyyaml",
     "loguru",
     "pydantic>=2.0",  # You're using v2 features
-    "typer",          # For CLI
-    "rich",           # For pretty CLI output
+    "typer[all]",     # [all] includes rich for pretty output
     "matplotlib",     # Your scripts need this
     "scipy",          # For numerical work
     "numba",          # For performance

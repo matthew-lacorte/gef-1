@@ -1,2 +1,2 @@
 [console_scripts]
-gef = gef.cli:app
+gef = gef.cli.main:app

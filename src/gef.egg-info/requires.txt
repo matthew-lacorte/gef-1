@@ -2,6 +2,12 @@ numpy
 sympy
 pyyaml
 loguru
+pydantic>=2.0
+typer[all]
+matplotlib
+scipy
+numba
+pint
 
 [dev]
 black

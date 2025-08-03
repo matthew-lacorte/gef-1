@@ -9,6 +9,12 @@ Requires-Dist: numpy
 Requires-Dist: sympy
 Requires-Dist: pyyaml
 Requires-Dist: loguru
+Requires-Dist: pydantic>=2.0
+Requires-Dist: typer[all]
+Requires-Dist: matplotlib
+Requires-Dist: scipy
+Requires-Dist: numba
+Requires-Dist: pint
 Provides-Extra: dev
 Requires-Dist: black; extra == "dev"
 Requires-Dist: ruff; extra == "dev"

@@ -8,9 +8,12 @@ src/gef.egg-info/entry_points.txt
 src/gef.egg-info/requires.txt
 src/gef.egg-info/top_level.txt
 src/gef/cli/__init__.py
+src/gef/cli/common.py
 src/gef/cli/constants.py
 src/gef/cli/main.py
+src/gef/cli/run.py
 src/gef/core/__init__.py
+src/gef/core/config.py
 src/gef/core/constants.py
 src/gef/core/enums.py
 src/gef/core/hopfion_geodesic_engine.py
@@ -21,8 +24,13 @@ src/gef/core/validators.py
 src/gef/core/version.py
 src/gef/geometry/__init__.py
 src/gef/geometry/hopfion_oneshot.py
+src/gef/geometry/intermod.py
 src/gef/geometry/oneshot_viz.py
+src/gef/geometry/geodesics/hopfion_geodesic_engine.py
+src/gef/geometry/geodesics/s3_geodesic_engine.py
 src/gef/numerics/__init__.py
 src/gef/tools/__init__.py
 src/gef/tools/obsidian/markdown_factory.py
 src/gef/tools/obsidian/vault_processor.py
+src/gef/tools/visualization/generate_manifold_animations.py
+tests/test_constants.py

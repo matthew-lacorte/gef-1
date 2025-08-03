@@ -2,12 +2,12 @@ import os
 import sys
 import yaml
 import argparse
-import datetime
-from pathlib import Path
 import shutil
-import uuid
 import random
 import numpy as np
+import datetime
+import uuid
+from pathlib import Path
 
 def set_global_seed(seed):
     random.seed(seed)
@@ -51,14 +51,11 @@ def make_output_dir(script_name, base_output_dir=None):
     Creates a timestamped output directory for the script run.
     Returns the path to the created output directory.
     """
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     run_id = uuid.uuid4().hex[:6]
     out_base = Path(base_output_dir or "outputs") / script_name
     out_dir = out_base / f"{timestamp}-{run_id}"
-    out_dir.mkdir(parents=True, exist_ok=False)
+    out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
 
-def create_analysis_output_dir(script_name: str, base_dir: Path = None) -> Path:
-    """Standard output directory creation for all scripts."""
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    
