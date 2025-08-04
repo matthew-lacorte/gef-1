@@ -115,5 +115,5 @@ def run_benford_analysis(config_path):
 
 if __name__ == '__main__':
     # This points to the config file defining the experiment
-    config_file = 'experiments/scripts/prime_isomorphism/benfords_law/config/benford_analysis_config.yml'
+    config_file = 'scripts/fractals/benfords_law/config/benford_analysis_config.yml'
     run_benford_analysis(config_file)
