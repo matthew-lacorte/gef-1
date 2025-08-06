@@ -7,4 +7,4 @@ single:
 sweep:
   start_MeV: 150.0
   stop_MeV:  250.0
-  step_MeV:  10.0
+  step_MeV:  1.0

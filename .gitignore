@@ -4,3 +4,5 @@ Thumbs.db
 results/
 __pycache__
 __pycache__/
+base_config.yml
+used_config.yml

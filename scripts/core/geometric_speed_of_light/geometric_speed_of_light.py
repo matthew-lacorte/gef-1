@@ -29,7 +29,7 @@ from gef.core.validators import asdict, positive_value
 # ──────────────────────────────────────────────────────────────────────────────
 # Physical constants from the GEF constants system
 c_const = CONSTANTS_DICT["c"]
-planck_const = CONSTANTS_DICT["h_planck"]
+planck_const = CONSTANTS_DICT["hbar"]
 electron_volt_const = CONSTANTS_DICT["eV"]
 
 # Extract the actual values for calculations

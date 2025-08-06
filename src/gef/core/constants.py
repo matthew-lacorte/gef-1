@@ -144,7 +144,7 @@ CONSTANTS: List[ConstantInfo] = [
     ConstantInfo(
         name="P_env",
         symbol=P_env,
-        description="Dimensionless environmental pressure from the 'Sea of Seas'.",
+        description="Dimensionless environmental pressure from the Plenum.",
         category=ConstantCategory.MODEL_PARAMETER,
         sidecar_path="sidecar_constant_P_env.md"
     ),
