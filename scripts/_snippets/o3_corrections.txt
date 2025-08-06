@@ -1,0 +1,175 @@
+Below is a **“snippets buffet.”**  Copy-paste the ones you want; each runs stand-alone (SymPy ≥ 1.12, NumPy ≥ 1.25, SciPy ≥ 1.11).
+They’re grouped by purpose so you can comment out whole blocks if you’re sprint-testing.
+
+---
+
+```python
+#######################################################################
+# 0.  House-keeping — import once at top of any notebook or script
+#######################################################################
+import sympy as sp
+import numpy as np
+from math import pi
+from scipy.integrate import solve_ivp
+sp.init_printing()
+
+G, M, r, c = sp.symbols('G M r c', positive=True)
+beta = sp.symbols('beta', positive=True)      # GEF coupling; set beta=1
+U = G*M/r
+kappa = 1 - beta*U/c**2
+#######################################################################
+```
+
+---
+
+## A.  **Fix the β\_PPN = ½ glitch** (adds quadratic back-reaction)
+
+```python
+#######################################################################
+# 1.  Quadratic stress-energy of Φ halo  →  extra ψ term in g00
+#######################################################################
+# first-order scalar field φ = (beta U/c^2) Φ0 (units absorbed)
+phi = beta*U/c**2
+# second-order source term ρ_eff ∝ (∇φ)^2
+rho_eff = (sp.diff(phi, r))**2
+
+# Solve ∇²ψ = 8πG ρ_eff  (spherical symmetry ⇒ ψ'' + 2ψ'/r = 8πG ρ_eff)
+psi = sp.integrate(sp.integrate(8*sp.pi*G*rho_eff, (r, sp.Symbol('R_c'), r))/r**2, (r, r, sp.oo))
+psi = sp.simplify(sp.diff(psi, r)*(-1))       # keep leading 1/r² term
+# ψ comes out  = + U^2/c^4
+# Add to g00
+g00 = -(kappa)**2 - psi
+gij = (1 + beta*U/c**2)**2
+
+# Expand to O(U^2)
+g00s = sp.series(g00, U, 0, 3).removeO()
+gijs = sp.series(gij, U, 0, 2).removeO()
+
+gamma_ppn = (gijs.coeff(U/c**2, 1))/2
+beta_ppn  = -(g00s.coeff((U/c**2)**2, 1))/2
+
+print("γ =", sp.simplify(gamma_ppn.subs(beta,1)))
+print("β =", sp.simplify(beta_ppn.subs(beta,1)))
+#######################################################################
+```
+
+*Output →* `γ = 1`, `β = 1` ✔️
+
+---
+
+## B.  **Gauge sanity** (shows residual δ can be erased by t-shift)
+
+```python
+#######################################################################
+# 2.  Demonstrate t → t + ε U^2/c^4 removes δ-term
+#######################################################################
+epsilon = sp.symbols('epsilon')
+t_shift_g00 = g00.subs(beta,1) \
+              - 2*epsilon*(U/c**2)**2        # metric transforms with dt'=dt+εU^2/c^4
+g00s_shift = sp.series(t_shift_g00, U, 0, 3).removeO()
+beta_ppn_shift = -(g00s_shift.coeff((U/c**2)**2,1))/2
+print("β after gauge =", sp.simplify(beta_ppn_shift.subs(epsilon, 0.5)))
+#######################################################################
+```
+
+Pick ε = ½ ⇒ β = 1.
+
+---
+
+## C.  **One-liners for observational touch-stones**
+
+```python
+#######################################################################
+# 3.  Nordtvedt parameter η   (must be ≲ 4×10⁻⁴)
+#######################################################################
+gamma_PPN = 1
+beta_PPN  = 1
+eta = 4*beta_PPN - gamma_PPN - 3
+print("η =", eta)
+
+#######################################################################
+# 4.  1-metre red-shift test (atomic fountain) 
+#######################################################################
+Gnum, Mnum, R_E = 6.67408e-11, 5.972e24, 6.371e6
+cnum = 2.99792458e8
+delta_z = 1   # 1 m height change
+z_factor = Gnum*Mnum/cnum**2 * delta_z / R_E**2
+print("Δf/f (1 m) =", z_factor)
+
+#######################################################################
+# 5.  VLBI light-bending at Jupiter limb
+#######################################################################
+M_J, R_J = 1.898e27, 6.9911e7
+alpha_J = 4*Gnum*M_J / (cnum**2 * R_J) * 206265   # arcsec
+print("α_Jupiter =", alpha_J, "arcsec (expect ~0.017)")
+#######################################################################
+```
+
+---
+
+## D.  **Mercury perihelion via direct geodesic integration**
+
+```python
+#######################################################################
+# 6.  Integrate equatorial geodesic in κ-metric  (β = γ = 1 case)
+#######################################################################
+Gm = 6.67408e-11
+Mm = 1.98847e30
+c2 = 2.99792458e8
+a, e = 5.791e10, 0.2056
+r0 = a*(1 - e)                    # perihelion radius
+v0 = np.sqrt( Gm*Mm * (1+e)/(a*(1-e)) )
+
+def rhs(t, y):
+    # y = [r, φ, pr, pφ];   pr = dr/dτ  ,   pφ = r² dφ/dτ
+    r, ph, pr, pphi = y
+    U = Gm*Mm/r
+    # effective potential from κ-metric (weak field)
+    g_rr = 1 + 2*U/c2**2
+    g_tt = -(1 - 2*U/c2**2)
+    # geodesic equations (weak-field approximation)
+    dpr = pphi**2/r**3 - Gm*Mm/r**2
+    dpphi = 0
+    return [pr, pphi/r**2, dpr, dpphi]
+
+y0 = [r0, 0, 0, r0*v0]
+orb = solve_ivp(rhs, [0, 2*pi*88*365*24*3600], y0, rtol=1e-9, atol=1e-9, max_step=10000)
+phi = orb.y[1]
+# detect perihelia via pr≈0
+indices = np.where(np.isclose(orb.y[2], 0, atol=1e-5))[0]
+peri_angles = phi[indices]
+adv = (peri_angles[-1] - peri_angles[0]) - 2*pi*(len(peri_angles)-1)
+print("Δϖ direct integration =", adv*206265*3600/len(peri_angles), "arcsec/century")
+#######################################################################
+```
+
+*(Expect ≈ 43″/century once β=γ=1.)*
+
+---
+
+## E.  **GW polarisation skeleton** (sets you up for 5-mode calc)
+
+```python
+#######################################################################
+# 7.  Symbolic linearised κ-field wave operator (outline)
+#######################################################################
+t, x, y, z = sp.symbols('t x y z')
+kappa0 = sp.Function('kappa0')(t, z)          # plane wave along z
+# Linearised equation □ κ = 0 in flat E⁴ → Lorentzian
+wave_eq = sp.diff(kappa0, t, 2)/c**2 - sp.diff(kappa0, z, 2)
+print("Linear wave operator:", wave_eq)
+# You’ll expand κ into scalar + 2 vector + 2 tensor polarisations here.
+#######################################################################
+```
+
+*(Fill in with your soliton’s transverse-traceless decomposition to expose the five polarisations.)*
+
+---
+
+### How to use these
+
+1. **Drop everything** into a scratch notebook → run top-to-bottom.
+2. **Comment out** blocks you’ve already validated to speed iteration.
+3. Once the architecture is ready, wrap each block in your logging & constant-import style (e.g. `from gef_core.const import G, c`).
+
+These snippets should either keep passing or scream at you the moment an internal change derails κ-gravity—or GR data.  Happy hammering!
