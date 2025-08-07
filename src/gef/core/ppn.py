@@ -60,3 +60,25 @@ for i, r in enumerate(r_values, start=1):
 print("\nFeigenbaum delta estimates:")
 for i, d in enumerate(deltas, start=3):
     print(f"δ_{i} = {d:.12f}")
+
+# This is the crucial part!
+if __name__ == "__main__":
+    r_values = [3.0]
+    period = 2
+    for n in range(1, 8):
+        period *= 2
+        r_prev = r_values[-1] + 1e-6
+        r_n = find_bifurcation(r_prev, period, 4.0, tol=1e-12)
+        r_values.append(r_n)
+
+    deltas = []
+    for i in range(2, len(r_values)):
+        deltas.append((r_values[i-1] - r_values[i-2]) / (r_values[i] - r_values[i-1]))
+
+    print("Feigenbaum delta estimates for the logistic map:")
+    print("n (period 2^n)    r_n")
+    for i, r in enumerate(r_values, start=1):
+        print(f"{i:>2} ({2**i:>4})     {r:.12f}")
+    print("\nFeigenbaum delta estimates:")
+    for i, d in enumerate(deltas, start=3):
+        print(f"δ_{i} = {d:.12f}")

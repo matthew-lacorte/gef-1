@@ -1,4 +1,5 @@
-# src/gef/scripts/core/bifurcation_scan.py
+# src/gef_core/bifurcation_scan.py
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -7,50 +8,64 @@ import concurrent.futures
 import yaml
 from pathlib import Path
 import time
+import logging
 
-# Make sure the gef package is in the Python path
-# (This is a common way to handle local package imports in scripts)
-script_dir = Path(__file__).parent
-sys.path.append(str(script_dir.parent.parent))
+# --- Setup Project Path ---
+# This makes imports robust, assuming the script is in src/gef_core/
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent.parent
+sys.path.append(str(project_root))
 
-from gef.core.hopfion_relaxer import HopfionRelaxer
-from gef.core.ppn import fundamental_period
+# --- Local Imports ---
+# Use try-except for robustness if run outside the package structure
+try:
+    from gef.core.hopfion_relaxer import HopfionRelaxer
+    from gef.core.ppn import fundamental_period
+except ImportError:
+    print("Could not import from src.gef..., trying relative paths.")
+    from hopfion_relaxer import HopfionRelaxer
+    # Assuming ppn is in the same directory for standalone execution
+    from ppn import fundamental_period
 
-# --- Configuration ---
-# It's better to load this from a YAML for reproducibility
-CONFIG_PATH = script_dir / "configs" / "default_bifurcation_scan.yml"
-with open(CONFIG_PATH, 'r') as f:
-    cfg = yaml.safe_load(f)
 
-# --- Parallelizable Relaxation Function ---
-def run_relax(g_sq: float):
+# --- Worker Function ---
+# This function is what each child process will execute.
+# It's best to keep it self-contained at the top level of the script.
+def run_relax_worker(g_sq: float, config: dict):
     """
-    Runs relaxation for a single g_squared value and returns the result.
-    """ 
+    Worker function for a single relaxation run.
+    It's designed to be pickled and sent to child processes.
+    """
     try:
-        local_cfg = cfg['solver_config']
-        local_cfg['g_squared'] = g_sq
-        sim = HopfionRelaxer(local_cfg)
+        solver_cfg = config['solver_config']
+        solver_cfg['g_squared'] = g_sq
+        sim = HopfionRelaxer(solver_cfg)
         sim.initialize_field(nw=1)
 
         phi_series, final_energy = sim.run_relaxation(
-            n_skip=cfg['scan_config']['n_skip'],
-            n_iter=cfg['scan_config']['n_iter']
+            n_skip=config['scan_config']['n_skip'],
+            n_iter=config['scan_config']['n_iter']
         )
         
         period = fundamental_period(
             phi_series, 
-            max_period=cfg['scan_config']['period_cap'],
-            tol=cfg['scan_config']['period_tolerance']
+            max_period=config['scan_config']['period_cap'],
+            tol=config['scan_config']['period_tolerance']
         )
         
         return g_sq, period, final_energy
-    except Exception as e:
-        print(f"ERROR: Simulation for g_sq={g_sq:.4f} failed: {e}")
-        return g_sq, -1, np.nan # Use -1 to indicate an error
+    except Exception:
+        # It's crucial to catch exceptions in the worker, otherwise they can hang the pool
+        # For a failed run, we return a clear error indicator.
+        return g_sq, -1, np.nan
 
-# --- Main Execution Block ---
+# --- Main Guard ---
 if __name__ == "__main__":
+    # --- Configuration ---
+    CONFIG_PATH = script_dir / "configs" / "default_bifurcation_scan.yml"
+    with open(CONFIG_PATH, 'r') as f:
+        cfg = yaml.safe_load(f)
+
     scan_cfg = cfg['scan_config']
     g_values = np.linspace(scan_cfg['g_min'], scan_cfg['g_max'], scan_cfg['n_steps'])
     
@@ -62,25 +77,36 @@ if __name__ == "__main__":
     results = []
     print(f"Starting bifurcation scan for g_squared from {scan_cfg['g_min']} to {scan_cfg['g_max']}...")
 
+    # --- Multiprocessing Execution ---
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        future_to_g = {executor.submit(run_relax, g): g for g in g_values}
+        # Pass the config to each worker
+        future_to_g = {executor.submit(run_relax_worker, g, cfg): g for g in g_values}
         
+        # This loop correctly updates tqdm as futures complete
         for future in tqdm(concurrent.futures.as_completed(future_to_g), total=len(g_values)):
-            results.append(future.result())
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as exc:
+                g_val = future_to_g[future]
+                print(f"ERROR: g_squared={g_val:.4f} generated an exception: {exc}")
+                results.append((g_val, -1, np.nan)) # Log failure
 
-    # --- Analyze Results ---
+    # --- Analysis ---
     results_df = pd.DataFrame(results, columns=['g_squared', 'period', 'final_energy']).sort_values('g_squared')
     
-    # Save raw results
     results_df.to_csv(output_dir / "raw_bifurcation_data.csv", index=False)
     print(f"\nRaw data saved to raw_bifurcation_data.csv")
 
     bifurcation_points = []
     last_period = 1
-    for _, row in results_df.iterrows():
-        g, p = row['g_squared'], row['period']
-        if p is not None and p > last_period:
+    # Use .itertuples() for efficient iteration
+    for row in results_df.itertuples():
+        g, p = row.g_squared, row.period
+        # Check for a valid, positive period that's larger than the last one
+        if p is not None and p > 0 and p > last_period:
             print(f"Period doubling detected: {last_period} -> {int(p)} at g_squared ≈ {g:.6f}")
+            # We are only interested in true period-doubling events
             if p == 2 * last_period:
                 bifurcation_points.append(g)
             last_period = int(p)
@@ -100,4 +126,4 @@ if __name__ == "__main__":
         for n, d in enumerate(deltas, start=2):
             print(f" δ_{n} = {d:.6f}")
     else:
-        print("\nFewer than 3 bifurcation points found. Cannot calculate δ.")
+        print("\nFewer than 3 period-doubling bifurcations were found. Cannot calculate δ.")

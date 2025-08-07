@@ -16,7 +16,7 @@ config.THREADING_LAYER = "tbb"  # Better threading on ARM
 
 
 # Enable fast math for additional speedup (if numerical precision allows)
-@njit(parallel=False, fastmath=True, cache=True)
+@njit(parallel=True, fastmath=True, cache=True)
 def calculate_laplacian_4d(phi: np.ndarray, dx: float) -> np.ndarray:
     """
     4D Laplacian calculation.
@@ -648,7 +648,7 @@ def calculate_full_potential_derivative(
     return result
 
 
-@njit(parallel=False, fastmath=True, cache=True)
+@njit(parallel=True, fastmath=True, cache=True)
 def calculate_full_total_energy(
     phi: np.ndarray,
     dx: float,
@@ -731,7 +731,7 @@ def calculate_full_total_energy(
 
 
 # Add missing out parameter support
-@njit(parallel=False, fastmath=True, cache=True)
+@njit(parallel=True, fastmath=True, cache=True)
 def calculate_laplacian_4d(phi: np.ndarray, dx: float, out: np.ndarray = None) -> np.ndarray:
     """
     4D Laplacian with optional output buffer.
