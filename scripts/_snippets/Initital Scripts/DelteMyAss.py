@@ -10,7 +10,7 @@ sp.init_printing()
 console = Console()
 
 G, M, r, c = sp.symbols('G M r c', positive=True)
-beta = sp.symbols('beta', positive=True)      # GEF coupling; set beta=1
+beta = sp.symbols('beta', positive=True)        # GEF coupling; set beta=1
 U = G*M/r
 kappa = 1 - beta*U/c**2
 

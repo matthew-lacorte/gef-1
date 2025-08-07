@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import os
 import shutil
 import yaml
 import datetime
