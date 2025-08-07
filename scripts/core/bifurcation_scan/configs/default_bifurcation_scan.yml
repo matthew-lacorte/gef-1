@@ -1,0 +1,21 @@
+output_dir: "results"
+
+scan_config:
+  g_min: 0.1
+  g_max: 1.5
+  n_steps: 200
+  period_cap: 256
+  n_skip: 5000
+  n_iter: 4096
+  period_tolerance: 1.0e-3
+
+solver_config:
+  lattice_size: [32, 32, 32, 32]
+  dx: 0.5
+  mu_squared: 1.0
+  lambda_val: 1.0
+  g_squared: 0.1 # This will be overwritten in the scan
+  P_env: 0.0
+  h_squared: 0.0
+  friction: 0.95
+  relaxation_dt: 1.0e-4
