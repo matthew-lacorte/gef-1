@@ -315,102 +315,91 @@ class HopfionRelaxer:
         """Initialize with seeding."""
         self.phi = seed_hopfion(self.lattice_shape, nw, self.dx)
 
-    def run_relaxation(self):
-        """Relaxation loop with adaptive timestepping and early exit using comprehensive physics functions.
+    def run_relaxation(self, return_energy_series: bool = False):
+        """Relaxation loop with adaptive timestepping and early exit.
+
+        Args:
+            return_energy_series (bool): If True, return the energy time series.
 
         Returns:
-            tuple: (final_energy, phi, converged_status)
-                - final_energy: The final energy of the configuration
-                - phi: The final field configuration
-                - converged_status: Boolean indicating if convergence was reached (True) or not (False)
+            tuple: (final_energy, phi, converged_status, energy_series)
+                - final_energy: The final energy of the configuration.
+                - phi: The final field configuration.
+                - converged_status: Boolean indicating if convergence was reached.
+                - energy_series: List of energy values over time (or None).
         """
         last_energy = 0.0
         energy_threshold = self.config.get("early_exit_energy_threshold", 1.0)
         i = 0
-        converged = False  # Track if convergence was reached
+        converged = False
+        energy_series = [] if return_energy_series else None
 
         while i < self.config["max_iterations"]:
-            # This is the main change: laplacian and potential are now separate
             self.laplacian_buffer = calculate_laplacian_4d(self.phi, self.dx)
-
             self.force_buffer = calculate_full_potential_derivative(
                 self.phi, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq, self.dx
             )
-
-            # The EOM is ∇²Φ - dU/dΦ = 0 at equilibrium.
-            # Calculate the force term (EOM)
             force = self.laplacian_buffer - self.force_buffer
 
-            # --- NEW "HEAVY BALL" UPDATE LOGIC ---
-            # 1. Update the velocity with friction (momentum) and the new force
             self.velocity_buffer = (self.friction * self.velocity_buffer) + (self.dt * force)
-
-            # 2. The update step is now just the velocity
             update_step = self.velocity_buffer
 
-            # --- Adaptive Timestep Logic ---
             max_change = np.max(np.abs(update_step))
-
             if max_change > self.max_phi_change_per_step:
-                # Step was too large, reject it and reduce timestep
                 self.dt *= self.dt_down_factor
-                print(f"WARNING: Large update ({max_change:.2e}). Reducing dt to {self.dt:.2e}")
-
-                # Check if dt has become too small
+                # print(f"WARNING: Large update ({max_change:.2e}). Reducing dt to {self.dt:.2e}")
                 if self.dt < self.min_dt:
-                    print("ERROR: Timestep fell below minimum. Simulation failed.")
-                    return np.nan, self.phi, False
-
-                # Do not increment `i`, just retry the step with smaller dt
+                    # print("ERROR: Timestep fell below minimum. Simulation failed.")
+                    return np.nan, self.phi, False, energy_series
                 continue
 
-            # If the step is stable, we can try to slowly increase dt back up
-            if i % 50 == 0 and i > 0:  # Check every 50 stable steps
+            if i % 50 == 0 and i > 0:
                 self.dt = min(self.max_dt, self.dt * self.dt_up_factor)
 
-            # --- Apply the update ---
-            # 3. Apply the update to the field (use += because velocity already has direction)
             self.phi += update_step
-            i += 1  # Increment iteration count only on successful steps
+            i += 1
 
-            # --- Monitoring (less frequent) ---
             if i % 100 == 0:
                 current_energy = calculate_full_total_energy(
                     self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq
                 )
+                if return_energy_series:
+                    energy_series.append(current_energy)
+
                 energy_change = abs(current_energy - last_energy)
                 power_dissipation = energy_change / self.dt
-                print(
-                    f"Iter: {i:6d}, dt: {self.dt:.2e}, E: {current_energy:10.2f}, ΔE: {energy_change:10.2e}, Power: {power_dissipation:10.2e}"
-                )
+                # print(
+                #     f"Iter: {i:6d}, dt: {self.dt:.2e}, E: {current_energy:10.2f}, ΔE: {energy_change:10.2e}, Power: {power_dissipation:10.2e}"
+                # )
 
-                # Early exit logic
                 if current_energy > energy_threshold:
-                    print(
-                        f"INFO: Energy ({current_energy:.2f}) exceeded threshold ({energy_threshold:.2f}). "
-                        "Configuration is unstable. Terminating early."
-                    )
-                    return np.nan, self.phi, False
+                    # print(
+                    #     f"INFO: Energy ({current_energy:.2f}) exceeded threshold ({energy_threshold:.2f}). "
+                    #     "Configuration is unstable. Terminating early."
+                    # )
+                    return np.nan, self.phi, False, energy_series
 
                 if power_dissipation < float(self.config["convergence_threshold"]) and i > 100:
-                    print(
-                        f"INFO: Power dissipation ({power_dissipation:.2e}) is below threshold. Convergence reached."
-                    )
+                    # print(
+                    #     f"INFO: Power dissipation ({power_dissipation:.2e}) is below threshold. Convergence reached."
+                    # )
                     converged = True
                     break
 
                 last_energy = current_energy
 
-        # If we reached max iterations without convergence
-        if i >= self.config["max_iterations"] and not converged:
-            print(
-                f"INFO: Reached maximum iterations ({self.config['max_iterations']}) without convergence."
-            )
+        # if i >= self.config["max_iterations"] and not converged:
+            # print(
+            #     f"INFO: Reached maximum iterations ({self.config['max_iterations']}) without convergence."
+            # )
 
         final_energy = calculate_full_total_energy(
             self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq
         )
-        return final_energy, self.phi, converged
+        if return_energy_series:
+            energy_series.append(final_energy)
+
+        return final_energy, self.phi, converged, energy_series
 
 
 @njit(fastmath=True, cache=True)
