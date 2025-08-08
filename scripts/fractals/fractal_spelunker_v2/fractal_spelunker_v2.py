@@ -212,7 +212,6 @@ def _render_fractal_quantized(width: int, height: int, x_min: float, x_max: floa
 # ==============================================================================
 # 3. PLOTTING AND ANALYSIS
 # ==============================================================================
-# ... (These functions are unchanged and fully reusable) ...
 def plot_and_save_frame(img_data: np.ndarray,
                         frame_path: Path,
                         title: str,
@@ -324,6 +323,18 @@ def run_simulation(config: Dict):
     output_dir = Path(config["output_dir"]) / f"{mode}_{timestamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Outputs will be saved to: {output_dir}")
+    # Persist the exact configuration used for this run (after any CLI overrides)
+    try:
+        used_cfg = dict(config)
+        # Attach lightweight run metadata (non-intrusive)
+        used_cfg.setdefault('run_metadata', {})
+        used_cfg['run_metadata'].update({
+            'timestamp': timestamp,
+        })
+        with (output_dir / 'used_config.yml').open('w') as f:
+            yaml.safe_dump(used_cfg, f, sort_keys=False)
+    except Exception as e:
+        print(f"Warning: failed to write used_config.yml: {e}")
 
     win, p_plot = config['fractal_window'], config['plotting']
     
@@ -368,7 +379,10 @@ def run_genesis_sweep(config: Dict, output_dir: Path):
         render_kwargs[param_to_sweep] = sweep_val
         
         img_data = _render_fractal_quantized(**render_kwargs)
-        
+        # Save the raw data array for this frame
+        data_path = output_dir / f"frame_{i:04d}_data.npy"
+        np.save(data_path, img_data)
+
         title = f"Genesis State | {param_to_sweep} = {sweep_val:.4f}"
         
         plot_and_save_frame(
@@ -427,7 +441,6 @@ def run_standard_sweep(config: Dict, output_dir: Path):
         print("\nGenerating Trapped Area vs. Angle plot...")
         generate_area_curve_plot(thetas_pi, area_fractions, output_dir, config)
 
-# ... (main function is identical to the previous version) ...
 def main():
     """Main entry point: parses args, loads config, and runs the simulation."""
     script_dir = Path(__file__).parent.absolute()
@@ -441,6 +454,12 @@ def main():
     
     try:
         config = load_and_validate_config(args.config)
+        # Attach provenance so it propagates to used_config.yml
+        config.setdefault('run_metadata', {})
+        config['run_metadata'].update({
+            'config_path': str(args.config.resolve()),
+            'cli_overrides': {},  # populated in future if CLI flags override config values
+        })
         run_simulation(config)
     except (ValueError, FileNotFoundError, KeyError, yaml.YAMLError) as e:
         print(f"\nConfiguration or Input Error: {e}", file=sys.stderr)

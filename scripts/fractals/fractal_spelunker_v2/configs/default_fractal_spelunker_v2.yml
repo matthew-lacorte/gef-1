@@ -13,12 +13,12 @@ mode: 'quantize-gravity'
 genesis_sweep_params:
   # The parameter within 'quantize_gravity_params' to animate.
   # Common choices: 'genesis_target' or 'genesis_strength'
-  parameter_to_sweep: 'genesis_strength'
+  parameter_to_sweep: 'genesis_target'
 
   # --- Sweep Parameters ---
   start_angle_pi: 0.0
   end_angle_pi: 2.0 
-  num_frames: 50
+  num_frames: 5
 
 
   # The range of values for the sweep.
