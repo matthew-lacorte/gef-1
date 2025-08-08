@@ -18,12 +18,12 @@ genesis_sweep_params:
   # --- Sweep Parameters ---
   start_angle_pi: 0.0
   end_angle_pi: 2.0 
-  num_frames: 200
+  num_frames: 300
 
 
   # The range of values for the sweep.
   start_value: 0.5
-  end_value: 1
+  end_value: 1.5
   
 # --- Genesis Fixed Parameters: The non-swept parameters for the simulation ---
 quantize_gravity_params:
@@ -51,11 +51,11 @@ anisotropy_scaling:
 
 # --- Simulation & Render Quality ---
 image_size: 1024 # Keep this lower for faster testing of animations
-max_iterations: 300
+max_iterations: 400
 fractal_window: [-2.2, 2.2, -2.2, 2.2]
 
 # --- Output & Plotting ---
-output_dir: '/Volumes/VFX/GEF/data/analysis/fractal_spelunker_v2'
+output_dir: '/Volumes/VFX/GEF/data/analysis/genesis_analyzer.yml'
 plotting:
   animation_figsize: [12, 12]
   cmap: 'magma'

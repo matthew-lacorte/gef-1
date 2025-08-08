@@ -1,0 +1,47 @@
+# Configuration for the GEF "Quantize Gravity" Grid Sweep
+# This experiment maps the full 2D parameter space of the Genesis simulation.
+
+mode: 'quantize-gravity'
+
+# --- Genesis Grid Sweep Parameters: The heart of the 2D map ---
+genesis_sweep_params:
+  # Define the two sweep axes. The script will iterate over every combination.
+  theta_sweep:
+    start_value: 0.0
+    end_value: 2.0  # A full 360-degree sweep (in units of pi)
+    num_frames: 40  # Resolution on the theta-axis
+  
+  target_sweep:
+    start_value: 0.0
+    end_value: 2.0
+    num_frames: 40  # Resolution on the genesis_target-axis
+
+  theta_sweep:
+    start_value: 0
+    end_value: 3
+    num_frames: 20
+
+# --- Genesis Fixed Parameters: The non-swept parameters ---
+quantize_gravity_params:
+  # This value is only used if 'genesis_strength' is the swept parameter (not the case here)
+  genesis_strength: 0.75
+  k_damping: 0.8
+  is_julia: false
+
+# --- Shared Parameters ---
+julia_set_c: [-0.6, 0.8]
+anisotropy_scaling:
+  x: 1.0
+
+# --- Simulation & Render Quality ---
+image_size: 512 # Keep resolution low for grid sweeps to manage time!
+max_iterations: 300
+fractal_window: [-2.0, 2.0, -2.0, 2.0]
+
+# --- Output & Plotting ---
+output_dir: './data/genesis_grid_search'
+plotting:
+  animation_figsize: [10, 10]
+  cmap: 'magma'
+  dpi: 100
+  normalization: 'relative'

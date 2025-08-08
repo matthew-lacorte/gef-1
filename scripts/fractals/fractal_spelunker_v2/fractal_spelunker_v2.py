@@ -32,7 +32,6 @@ except ImportError:
 # ==============================================================================
 # 1. PARAMETER DATA STRUCTURES & CORE ITERATORS
 # ==============================================================================
-# ... (This section is unchanged as its logic is sound) ...
 param_spec = [
     ('scale_x', float64), ('scale_y', float64),
     ('use_spatial_lambda', boolean),
@@ -305,6 +304,9 @@ def load_and_validate_config(config_path: Path) -> Dict:
     
     if 'genesis_sweep_params' not in cfg and cfg['mode'] == 'quantize-gravity':
         raise ValueError("Mode 'quantize-gravity' requires 'genesis_sweep_params' section.")
+        
+    if cfg['mode'] == 'quantize-gravity' and 'genesis_sweep_params' not in cfg:
+        raise ValueError("Mode 'quantize-gravity' requires 'genesis_sweep_params' section.")
 
     # ... (rest of validation is the same) ...
     if not (16 <= cfg['image_size'] <= 16384):
@@ -323,28 +325,73 @@ def run_simulation(config: Dict):
     output_dir = Path(config["output_dir"]) / f"{mode}_{timestamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Outputs will be saved to: {output_dir}")
-    # Persist the exact configuration used for this run (after any CLI overrides)
-    try:
-        used_cfg = dict(config)
-        # Attach lightweight run metadata (non-intrusive)
-        used_cfg.setdefault('run_metadata', {})
-        used_cfg['run_metadata'].update({
-            'timestamp': timestamp,
-        })
-        with (output_dir / 'used_config.yml').open('w') as f:
-            yaml.safe_dump(used_cfg, f, sort_keys=False)
-    except Exception as e:
-        print(f"Warning: failed to write used_config.yml: {e}")
-
-    win, p_plot = config['fractal_window'], config['plotting']
     
-    # --- Dispatch to the correct simulation loop ---
+    # Save the config file used for this run for reproducibility
+    with open(output_dir / 'run_config.yaml', 'w') as f:
+        yaml.dump(config, f)
+
     if mode == 'quantize-gravity':
-        run_genesis_sweep(config, output_dir)
+        run_genesis_grid_sweep(config, output_dir)
     else:
-        run_standard_sweep(config, output_dir)
+        run_standard_sweep(config, output_dir) # For mandelbrot, julia, orbit
 
     print(f"\nSimulation complete.")
+
+def run_genesis_grid_sweep(config: Dict, output_dir: Path):
+    """Runs a 2D parameter grid sweep for the quantize-gravity mode."""
+    p_qg = config['quantize_gravity_params']
+    p_sweep = config['genesis_sweep_params']
+    
+    # Create the parameter space for the two axes
+    theta_values = np.linspace(p_sweep['theta_sweep']['start_value'], 
+                               p_sweep['theta_sweep']['end_value'], 
+                               p_sweep['theta_sweep']['num_frames'])
+    
+    target_values = np.linspace(p_sweep['target_sweep']['start_value'],
+                                p_sweep['target_sweep']['end_value'],
+                                p_sweep['target_sweep']['num_frames'])
+    
+    total_frames = len(theta_values) * len(target_values)
+    desc = "Rendering Genesis Grid"
+    
+    render_kwargs = {
+        "width": config["image_size"], "height": config["image_size"],
+        "x_min": config["fractal_window"][0], "x_max": config["fractal_window"][1],
+        "y_min": config["fractal_window"][2], "y_max": config["fractal_window"][3],
+        "max_iter": config['max_iterations'],
+        "is_julia": p_qg.get('is_julia', False),
+        "c_julia": complex(*config.get('julia_set_c', [0,0])),
+        "scale_x": config['anisotropy_scaling']['x'],
+        "genesis_strength": p_qg['genesis_strength'],
+        "k_damping": p_qg['k_damping']
+    }
+
+    with tqdm(total=total_frames, desc=desc) as pbar:
+        for i, th_pi in enumerate(theta_values):
+            th_rad = th_pi * np.pi
+            cos_th, sin_th = math.cos(th_rad), math.sin(th_rad)
+            render_kwargs['cos_th'], render_kwargs['sin_th'] = cos_th, sin_th
+            
+            for j, target_val in enumerate(target_values):
+                render_kwargs['genesis_target'] = target_val
+                
+                img_data = _render_fractal_quantized(**render_kwargs)
+                
+                # --- ROBUST FILE NAMING ---
+                # Save files with indices for easy grid reconstruction
+                base_filename = f"frame_{i:04d}_{j:04d}"
+                data_path = output_dir / f"{base_filename}_data.npy"
+                np.save(data_path, img_data)
+                
+                # Save a PNG for visual inspection (optional, can be disabled for speed)
+                title = f"θ={th_pi:.3f}π | target={target_val:.3f}"
+                plot_and_save_frame(
+                    img_data, output_dir / f"{base_filename}.png", title,
+                    config['plotting']['cmap'], config['plotting']['dpi'],
+                    tuple(config['plotting']['animation_figsize']), config['fractal_window'],
+                    norm_type=config['plotting'].get('normalization', 'relative')
+                )
+                pbar.update(1)
 
 def run_genesis_sweep(config: Dict, output_dir: Path):
     """Runs an animated sweep for the quantize-gravity mode."""
