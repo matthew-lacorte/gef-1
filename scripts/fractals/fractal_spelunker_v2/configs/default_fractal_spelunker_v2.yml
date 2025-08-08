@@ -9,32 +9,39 @@
 # mode: 'orbit'
 mode: 'quantize-gravity'
 
-# --- Genesis Parameters: The heart of the new simulation ---
+
+genesis_sweep_params:
+  # The parameter within 'quantize_gravity_params' to animate.
+  # Common choices: 'genesis_target' or 'genesis_strength'
+  parameter_to_sweep: 'genesis_strength'
+
+  # --- Sweep Parameters ---
+  start_angle_pi: 0.0
+  end_angle_pi: 2.0 
+  num_frames: 50
+
+
+  # The range of values for the sweep.
+  start_value: 0
+  end_value: 3
+  
+# --- Genesis Fixed Parameters: The non-swept parameters for the simulation ---
 quantize_gravity_params:
-  # The "target" law the universe is trying to settle into.
-  # This is the parameter we will sweep to find "quantized" stable values.
-  genesis_target: 0.6  # The target value for scale_y
+  # If 'genesis_target' is being swept, this value is ignored.
+  # If another param is swept, this is the fixed target value.
+  genesis_target: 0.4
   
-  # How strongly local gravity (κ-flow) pulls the law towards the target.
-  # A higher value means gravity has a stronger effect on the laws.
-  genesis_strength: 0.5
+  # The strength of the gravity-law coupling.
+  genesis_strength: 0.75
   
-  # A damping factor for the κ-flow grid. Higher values mean the "memory"
-  # of gravity lasts longer. (0.0 = no memory, 0.99 = very long memory)
+  # Damping factor for the κ-flow grid's "memory".
   k_damping: 0.8
   
   # The fixed misalignment angle for this simulation.
-  fixed_angle_pi: 0.0
+  fixed_angle_pi: 0.25
   
   # Whether to run in Julia mode (True) or Mandelbrot mode (False)
   is_julia: false
-
-# --- Sweep Parameters ---
-sweep_parameters:
-  start_angle_pi: 0.0
-  end_angle_pi: 1.0 
-  num_frames: 100
-
 
 # --- Shared Parameters ---
 julia_set_c: [-0.6, 0.8] # Only used if is_julia is true
@@ -43,16 +50,14 @@ anisotropy_scaling:
   x: 1.0 # The x-scaling remains constant
 
 # --- Simulation & Render Quality ---
-image_size: 1024
-max_iterations: 500 # Needs more iterations to settle
+image_size: 512 # Keep this lower for faster testing of animations
+max_iterations: 300
 fractal_window: [-2.0, 2.0, -2.0, 2.0]
 
 # --- Output & Plotting ---
-output_dir: '/Volumes/VFX/GEF/data/fractal_spelunker_v2'
+output_dir: '/Volumes/VFX/GEF/data/analysis/fractal_spelunker_v2'
 plotting:
-  animation_figsize: [16, 16]
+  animation_figsize: [12, 12]
   cmap: 'magma'
-  dpi: 150
-  # 'relative' or 'percentile' is best for visualizing the final law grid
+  dpi: 100
   normalization: 'relative' 
-
