@@ -2,27 +2,28 @@
 # Describes a scene with massive objects and visualizes their effect on the local time flow rate.
 
 simulation:
-  grid_size: 2048       # Resolution of the simulation grid 
-  window: [-1, 1, -1, 1] # [x_min, x_max, y_min, y_max] physical area
+  grid_size: 1024       
+  window: [-10, 10, -10, 10]
   
-  # The effective gravitational coupling constant. This combines the GEF
-  # constants α and β into a single value for visualization.
-  G_effective: 0.2
+  # --- SCALING FIX ---
+  # This value is now much smaller to ensure we are in a weak-field regime
+  # where G_eff * M/r << 1. This prevents "crushing" spacetime and reveals the wells.
+  G_effective: 0.08
   
   # A list of all massive objects in the simulation.
   masses:
     - mass: 100.0
-      position: [-0.5, 0.0]  # [x, y] coordinates
+      position: [-3.0, 0.0]
       
     - mass: 30.0
-      position: [0.5, 0.0]   # [x, y] coordinates
+      position: [5.0, 2.0]
       
     - mass: 5.0
       position: [-6.0, 7.0]
 
-output_dir: 'results/k_flow_simulations' # Use a relative path for portability
+output_dir: 'results/k_flow_simulations'
 
 plotting:
-  figsize: [20, 20]
-  cmap: 'inferno' # 'magma', 'hot', 'plasma' are also great choices
+  figsize: [12, 12]
+  cmap: 'inferno'
   dpi: 150
