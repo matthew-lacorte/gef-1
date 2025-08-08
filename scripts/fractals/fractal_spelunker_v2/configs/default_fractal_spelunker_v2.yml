@@ -1,0 +1,58 @@
+# Configuration for the GEF "Quantize Gravity" Simulation
+# This experiment simulates the co-evolution of local geometry and physical
+# laws to search for a stable, self-consistent "Genesis Configuration."
+
+# OTHER MODES:
+# mode: 'quantize-gravity'
+# mode: 'julia'
+# mode: 'mandelbrot'
+# mode: 'orbit'
+mode: 'quantize-gravity'
+
+# --- Genesis Parameters: The heart of the new simulation ---
+quantize_gravity_params:
+  # The "target" law the universe is trying to settle into.
+  # This is the parameter we will sweep to find "quantized" stable values.
+  genesis_target: 0.6  # The target value for scale_y
+  
+  # How strongly local gravity (κ-flow) pulls the law towards the target.
+  # A higher value means gravity has a stronger effect on the laws.
+  genesis_strength: 0.5
+  
+  # A damping factor for the κ-flow grid. Higher values mean the "memory"
+  # of gravity lasts longer. (0.0 = no memory, 0.99 = very long memory)
+  k_damping: 0.8
+  
+  # The fixed misalignment angle for this simulation.
+  fixed_angle_pi: 0.0
+  
+  # Whether to run in Julia mode (True) or Mandelbrot mode (False)
+  is_julia: false
+
+# --- Sweep Parameters ---
+sweep_parameters:
+  start_angle_pi: 0.0
+  end_angle_pi: 1.0 
+  num_frames: 100
+
+
+# --- Shared Parameters ---
+julia_set_c: [-0.6, 0.8] # Only used if is_julia is true
+
+anisotropy_scaling:
+  x: 1.0 # The x-scaling remains constant
+
+# --- Simulation & Render Quality ---
+image_size: 1024
+max_iterations: 500 # Needs more iterations to settle
+fractal_window: [-2.0, 2.0, -2.0, 2.0]
+
+# --- Output & Plotting ---
+output_dir: '/Volumes/VFX/GEF/data/fractal_spelunker_v2'
+plotting:
+  animation_figsize: [16, 16]
+  cmap: 'magma'
+  dpi: 150
+  # 'relative' or 'percentile' is best for visualizing the final law grid
+  normalization: 'relative' 
+
