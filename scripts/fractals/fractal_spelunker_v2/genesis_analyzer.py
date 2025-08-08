@@ -22,14 +22,20 @@ from tqdm import tqdm
 
 # --- Numba Set-up (graceful fallback) ---
 try:
-    from numba import njit
+    from numba import jit
 except ImportError:
     print("Numba not found → running in pure-Python (will be slow).")
-    def njit(f=None, **kw): return (lambda g: g)(f) if f else (lambda g: g)
+    jit = None
 
-run_directory = config['output_dir']
+def _maybe_jit(func):
+    """Apply a safe JIT if Numba is available; otherwise return the function.
+    Use object mode to support numpy.polyfit and histogram2d.
+    """
+    if 'jit' in globals() and jit is not None:
+        return jit(forceobj=True, cache=True)(func)
+    return func
 
-@njit
+@_maybe_jit
 def box_counting(binary_image: np.ndarray, min_box_size: int = 2, max_box_size: int = 512) -> float:
     """
     Calculates the fractal dimension of a binary image using the box-counting method.
@@ -70,13 +76,21 @@ def box_counting(binary_image: np.ndarray, min_box_size: int = 2, max_box_size: 
     
     return coeffs[0]
 
-def analyze_simulation_run(run_directory: Path, config_path: Path):
+def analyze_simulation_run(run_directory: Path, config_path: Path | None = None):
     """
     Main analysis function. Loads data, calculates dimensions, and plots results.
     """
     if not run_directory.is_dir():
         raise FileNotFoundError(f"Simulation directory not found at: {run_directory}")
-        
+
+    # Determine config path: prefer explicit override; otherwise use used_config.yml in run dir
+    if config_path is None:
+        config_path = run_directory / 'used_config.yml'
+        if not config_path.is_file():
+            raise FileNotFoundError(
+                f"Could not find 'used_config.yml' in {run_directory}. "
+                f"Provide --config to point to the original config file.")
+
     with config_path.open() as f:
         config = yaml.safe_load(f)
     
@@ -154,9 +168,12 @@ def main():
     parser = argparse.ArgumentParser(description="GEF Genesis Analyzer.",
                                      formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('run_directory', type=Path,
-                        help="Path to the simulation output directory containing the .npy files.")
-    parser.add_argument('--config', '-c', type=Path, required=True,
-                        help="Path to the YAML configuration file that was used for the simulation.")
+                        help="Path to a single simulation run directory (e.g., quantize-gravity_YYYY-MM-DD_HH-MM-SS).\n"
+                             "The analyzer will load frames from this folder and read configuration\n"
+                             "from 'used_config.yml' saved by the simulation.")
+    parser.add_argument('--config', '-c', type=Path, default=None,
+                        help="Optional: explicit path to a YAML configuration file.\n"
+                             "If omitted, the analyzer looks for 'used_config.yml' inside the run directory.")
     args = parser.parse_args()
 
     try:
