@@ -16,6 +16,7 @@ genesis_sweep_params:
     end_value: 2.0
     num_frames: 40  # Resolution on the genesis_target-axis
 
+  # --- Sweep Parameters ---
   theta_sweep:
     start_value: 0
     end_value: 3
@@ -39,9 +40,9 @@ max_iterations: 300
 fractal_window: [-2.0, 2.0, -2.0, 2.0]
 
 # --- Output & Plotting ---
-output_dir: './data/genesis_grid_search'
+output_dir: '/Volumes/VFX/GEF/data/analysis/fractal_spelunker_v2'
 plotting:
-  animation_figsize: [10, 10]
+  animation_figsize: [12, 12]
   cmap: 'magma'
   dpi: 100
   normalization: 'relative'

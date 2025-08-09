@@ -305,8 +305,15 @@ def load_and_validate_config(config_path: Path) -> Dict:
     if 'genesis_sweep_params' not in cfg and cfg['mode'] == 'quantize-gravity':
         raise ValueError("Mode 'quantize-gravity' requires 'genesis_sweep_params' section.")
         
-    if cfg['mode'] == 'quantize-gravity' and 'genesis_sweep_params' not in cfg:
-        raise ValueError("Mode 'quantize-gravity' requires 'genesis_sweep_params' section.")
+    if cfg['mode'] == 'quantize-gravity':
+        if 'genesis_sweep_params' not in cfg:
+            raise ValueError("Mode 'quantize-gravity' requires 'genesis_sweep_params' section.")
+        # Validate either 1D or 2D sweep schema
+        gsp = cfg['genesis_sweep_params']
+        is_grid = isinstance(gsp, dict) and ('theta_sweep' in gsp and 'target_sweep' in gsp)
+        is_1d = isinstance(gsp, dict) and ('parameter_to_sweep' in gsp and 'start_value' in gsp and 'end_value' in gsp and 'num_frames' in gsp)
+        if not (is_grid or is_1d):
+            raise ValueError("'genesis_sweep_params' must define either a 1D sweep (keys: parameter_to_sweep, start_value, end_value, num_frames) or a 2D grid (keys: theta_sweep and target_sweep each with start_value, end_value, num_frames).")
 
     # ... (rest of validation is the same) ...
     if not (16 <= cfg['image_size'] <= 16384):
@@ -331,7 +338,13 @@ def run_simulation(config: Dict):
         yaml.dump(config, f)
 
     if mode == 'quantize-gravity':
-        run_genesis_grid_sweep(config, output_dir)
+        # Auto-select 1D vs 2D sweep based on config shape
+        gsp = config.get('genesis_sweep_params', {})
+        is_grid = isinstance(gsp, dict) and ('theta_sweep' in gsp and 'target_sweep' in gsp)
+        if is_grid:
+            run_genesis_grid_sweep(config, output_dir)
+        else:
+            run_genesis_sweep(config, output_dir)
     else:
         run_standard_sweep(config, output_dir) # For mandelbrot, julia, orbit
 

@@ -55,9 +55,9 @@ max_iterations: 400
 fractal_window: [-2.2, 2.2, -2.2, 2.2]
 
 # --- Output & Plotting ---
-output_dir: '/Volumes/VFX/GEF/data/analysis/genesis_analyzer.yml'
+output_dir: '/Volumes/VFX/GEF/data/analysis/fractal_spelunker_v2'
 plotting:
   animation_figsize: [12, 12]
   cmap: 'magma'
   dpi: 100
-  normalization: 'relative' 
+  normalization: 'relative'

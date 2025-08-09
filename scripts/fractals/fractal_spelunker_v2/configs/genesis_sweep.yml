@@ -1,0 +1,41 @@
+# Single-parameter Genesis sweep config for fractal_spelunker_v2.py
+# Designed for the 'quantize-gravity' mode with a 1D animated sweep.
+
+mode: 'quantize-gravity'
+
+# --- Sweep parameters (1D) ---
+genesis_sweep_params:
+  # Which parameter inside quantize_gravity_params to sweep
+  parameter_to_sweep: 'genesis_target'  # or 'genesis_strength'
+  # Value range
+  start_value: 0.5
+  end_value: 2.5
+  # Number of frames to render
+  num_frames: 500
+
+# --- Fixed Genesis parameters ---
+quantize_gravity_params:
+  genesis_target: 0.6       # fixed unless parameter_to_sweep changes it
+  genesis_strength: 0.75
+  k_damping: 0.8
+  fixed_angle_pi: 0.76      # viewing angle in units of pi
+  is_julia: false
+
+# --- Shared Parameters ---
+julia_set_c: [-0.6, 0.8]    # only used if is_julia: true
+anisotropy_scaling:
+  x: 1.0
+
+# --- Render & Simulation ---
+image_size: 1024
+max_iterations: 400
+fractal_window: [-2.2, 2.2, -2.2, 2.2]
+
+# --- Output & Plotting ---
+# Must be a DIRECTORY (not a file). A timestamped subfolder is created inside.
+output_dir: '/Volumes/VFX/GEF/data/analysis/fractal_spelunker_v2'
+plotting:
+  animation_figsize: [12, 12]
+  cmap: 'magma'
+  dpi: 100
+  normalization: 'relative'
