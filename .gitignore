@@ -7,3 +7,5 @@ __pycache__/
 base_config.yml
 used_config.yml
 outputs/
+configs/
+.obsidian/
