@@ -5,7 +5,8 @@ This file serves as the canonical Single Source of Truth (SSoT) for the numerica
 values and symbolic representations of all constants used in GEF simulations and
 derivations. It is a direct implementation of the GEF Canonical Glossary.
 
-Version: 1.1.0 - Explicitly separates Model Inputs, Derived Predictions, and Observed Benchmarks.
+Version: 1.2.0 - Refined model structure by postulating M_Pl as a core input.
+                - Enhanced clarity of naming and documentation fields.
 
 Exports:
     - ConstantInfo: Pydantic model for constant metadata.
@@ -15,7 +16,7 @@ Exports:
     - All individual SymPy symbols for direct import in analytical work.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # --- Core Imports ---
 import sympy as sp
@@ -26,7 +27,6 @@ from typing import Optional, List, Dict
 from enum import Enum
 
 # --- Placeholder for project-specific utilities ---
-# In a real project, these would be imported from a shared utilities module.
 def asdict(model): return model.dict()
 def positive_value(cls, v):
     if v is not None and v < 0:
@@ -40,8 +40,8 @@ ureg = pint.UnitRegistry()
 
 class ConstantCategory(str, Enum):
     """Defines the role of a constant within the GEF framework."""
-    MODEL_INPUT = "Model Input"                 # A free parameter of the GEF model (e.g., κ∞, M_fund).
-    DERIVED_PREDICTION = "Derived Prediction"   # A value predicted by the model from its inputs (e.g., c_emergent).
+    MODEL_INPUT = "Model Input"                 # A free parameter or postulated scale of the GEF model.
+    DERIVED_PREDICTION = "Derived Prediction"   # A value predicted by the model from its inputs.
     OBSERVED_BENCHMARK = "Observed Benchmark"   # An external, measured value the model must reproduce.
     INTERNAL_FACTOR = "Internal Factor"         # A calculation helper, like the loop factor.
     CONVERSION = "Conversion"                   # A unit conversion factor (e.g., eV to Joules).
@@ -53,9 +53,9 @@ class ConstantInfo(BaseModel):
     symbol: Optional[sp.Basic] = Field(None, description="SymPy symbol for analytic calculations.")
     value: Optional[float] = Field(None, description="Default or reference numeric value.")
     units: str = Field("dimensionless", description="Units of the constant.")
-    description: str = Field("", description="Brief description for docs, aligned with the canonical glossary.")
+    description: str = Field("", description="Brief description, aligned with the canonical glossary.")
     category: ConstantCategory = Field(..., description="The primary category/role of the constant.")
-    relation: Optional[str] = Field(None, description="Symbolic relationship to other constants.")
+    relation: Optional[str] = Field(None, description="Symbolic relationship to other constants (LaTeX format).")
 
     class Config:
         frozen = True
@@ -78,7 +78,7 @@ h_sq = sp.Symbol('h²', real=True, positive=True)
 # Mass, Energy & Scales
 M_fund = sp.Symbol('M_fund', real=True, positive=True)
 M_Pl = sp.Symbol('M_Pl', real=True, positive=True)
-V_DE = sp.Symbol('V_DE', real=True, positive=True)
+V_DE = sp.Symbol('V_{DE}', real=True, positive=True)
 P_factor = sp.Symbol('P', real=True, positive=True)
 G_newton = sp.Symbol('G', real=True, positive=True)
 
@@ -87,13 +87,13 @@ m_euc = sp.Symbol('m', real=True, positive=True)
 m_0 = sp.Symbol('m₀', real=True, positive=True)
 
 # Dimensionless Couplings
-alpha_em = sp.Symbol('α_EM', real=True, positive=True)
-alpha_s = sp.Symbol('α_s', real=True, positive=True)
-alpha_G = sp.Symbol('α_G', real=True, positive=True)
+alpha_em = sp.Symbol('\\alpha_{EM}', real=True, positive=True)
+alpha_s = sp.Symbol('\\alpha_s', real=True, positive=True)
+alpha_G = sp.Symbol('\\alpha_G', real=True, positive=True)
 
 # Symbols for Observed Benchmarks
-c_observed = sp.Symbol('c_obs', real=True, positive=True)
-hbar = sp.Symbol('hbar', real=True, positive=True)
+c_observed = sp.Symbol('c_{obs}', real=True, positive=True)
+hbar = sp.Symbol('\\hbar', real=True, positive=True)
 eV = sp.Symbol('eV', real=True, positive=True)
 
 __all__ = [
@@ -108,13 +108,29 @@ __all__ = [
 _M_fund_val = 220.0  # MeV
 _alpha_em_obs_val = 1 / 137.035999084
 _gef_loop_factor = 16 * np.pi**2
-_M_Pl_obs_val = 1.22091e22  # MeV, from √(ħc/G)
+_M_Pl_val = 1.22091e22  # MeV, from √(ħc/G)
 _V_DE_obs_val = 2.39e-9  # MeV, from (ρ_DE)^(1/4)
 
 # === The Single Source of Truth for all Framework Constants ===
 CONSTANTS: List[ConstantInfo] = [
     # === 1. Core Model Inputs ===
-    # These are the fundamental free parameters of the GEF theory.
+    # These are the fundamental free parameters and postulated scales of the GEF theory.
+    ConstantInfo(
+        name="M_fund",
+        symbol=M_fund,
+        value=_M_fund_val,
+        units="MeV",
+        description="The Fundamental Mass Scale; the mass of the GEF Planck Particle (for matter).",
+        category=ConstantCategory.MODEL_INPUT,
+    ),
+    ConstantInfo(
+        name="M_Pl",
+        symbol=M_Pl,
+        value=_M_Pl_val,
+        units="MeV",
+        description="The Planck Mass, postulated as the energy scale of the Φ field vacuum (for substrate).",
+        category=ConstantCategory.MODEL_INPUT,
+    ),
     ConstantInfo(
         name="kappa_inf",
         symbol=kappa_inf,
@@ -133,14 +149,6 @@ CONSTANTS: List[ConstantInfo] = [
         description="The fundamental constant defining the energy scale of the short-range 'Hook' interaction.",
         category=ConstantCategory.MODEL_INPUT,
     ),
-    ConstantInfo(
-        name="M_fund",
-        symbol=M_fund,
-        value=_M_fund_val,
-        units="MeV",
-        description="The Fundamental Mass Scale; the mass of the GEF Planck Particle.",
-        category=ConstantCategory.MODEL_INPUT,
-    ),
 
     # === 2. Derived Predictions of the GEF Model ===
     # These values are calculated from the inputs and other predictions.
@@ -149,21 +157,21 @@ CONSTANTS: List[ConstantInfo] = [
         symbol=epsilon_0,
         description="The dimensionless parameter for isotropic Lorentz violation in the particle sector.",
         category=ConstantCategory.DERIVED_PREDICTION,
-        relation="b₀² - 1",
+        relation="b_0^2 - 1",
     ),
     ConstantInfo(
         name="b_0",
         symbol=b_0,
         description="The dimensionless measure of the w-dimension's anisotropy.",
         category=ConstantCategory.DERIVED_PREDICTION,
-        relation="sqrt(1 + epsilon_0)",
+        relation="\\sqrt{1 + \\epsilon_0}",
     ),
     ConstantInfo(
         name="c_emergent",
         symbol=c_emergent,
         description="The universal speed limit in the emergent (3+1)D spacetime.",
         category=ConstantCategory.DERIVED_PREDICTION,
-        relation="1/b₀",
+        relation="1 / b_0",
     ),
     ConstantInfo(
         name="lambda_G",
@@ -171,44 +179,44 @@ CONSTANTS: List[ConstantInfo] = [
         value=_gef_loop_factor * _alpha_em_obs_val, # ~1.152
         description="The predicted value for the substrate's quartic self-coupling constant.",
         category=ConstantCategory.DERIVED_PREDICTION,
-        relation="16π² * α_EM",
+        relation="16\\pi^2 \\alpha_{EM}",
+    ),
+    ConstantInfo(
+        name="alpha_em_predicted_from_lambda_G",
+        symbol=alpha_em,
+        description="The Fine-Structure Constant as derived from the substrate self-coupling.",
+        category=ConstantCategory.DERIVED_PREDICTION,
+        relation="\\lambda_G / (16\\pi^2)",
+    ),
+    ConstantInfo(
+        name="alpha_G",
+        symbol=alpha_G,
+        value=(_M_fund_val / _M_Pl_val)**2,
+        description="The predicted gravitational coupling constant for the fundamental particle.",
+        category=ConstantCategory.DERIVED_PREDICTION,
+        relation="(M_{fund} / M_{Pl})^2",
+    ),
+    ConstantInfo(
+        name="P_factor",
+        symbol=P_factor,
+        value=_V_DE_obs_val / _M_Pl_val,
+        description="The dimensionless intersection factor governing cosmological hierarchies.",
+        category=ConstantCategory.DERIVED_PREDICTION,
+        relation="V_{DE} / M_{Pl}",
     ),
     ConstantInfo(
         name="G_newton",
         symbol=G_newton,
         description="The effective, emergent Newton's constant.",
         category=ConstantCategory.DERIVED_PREDICTION,
-        relation="Derived from M_fund properties.",
-    ),
-     ConstantInfo(
-        name="P_factor",
-        symbol=P_factor,
-        value=_V_DE_obs_val / _M_Pl_obs_val,
-        description="The dimensionless intersection factor governing cosmological hierarchies.",
-        category=ConstantCategory.DERIVED_PREDICTION,
-        relation="V_DE / M_Pl",
-    ),
-    ConstantInfo(
-        name="alpha_G",
-        symbol=alpha_G,
-        value=(_M_fund_val / _M_Pl_obs_val)**2,
-        description="The predicted gravitational coupling constant for the fundamental particle.",
-        category=ConstantCategory.DERIVED_PREDICTION,
-        relation="(M_fund / M_Pl)²",
+        relation="Derived from M_{fund} properties",
     ),
     ConstantInfo(
         name="alpha_s",
         symbol=alpha_s,
         description="The Strong Coupling Constant, derived from the geometry of the 'Hook Coupling'.",
         category=ConstantCategory.DERIVED_PREDICTION,
-        relation="Derived from h².",
-    ),
-    ConstantInfo(
-        name="alpha_em_predicted",
-        symbol=alpha_em,
-        description="The Fine-Structure Constant as derived from the substrate self-coupling.",
-        category=ConstantCategory.DERIVED_PREDICTION,
-        relation="λ_G / 16π²",
+        relation="Derived from h^2",
     ),
 
     # === 3. Observed Benchmarks (External Reality) ===
@@ -231,25 +239,17 @@ CONSTANTS: List[ConstantInfo] = [
     ),
     ConstantInfo(
         name="alpha_em_observed",
-        symbol=alpha_em, # Uses the same symbol as the prediction, context is key.
+        symbol=alpha_em,
         value=_alpha_em_obs_val,
         description="The observed fine-structure constant. A fundamental benchmark for the theory.",
         category=ConstantCategory.OBSERVED_BENCHMARK,
     ),
     ConstantInfo(
-        name="M_Pl_observed",
-        symbol=M_Pl,
-        value=_M_Pl_obs_val,
-        units="MeV",
-        description="The observed Planck Mass, interpreted as the energy scale of the Φ field vacuum.",
-        category=ConstantCategory.OBSERVED_BENCHMARK,
-    ),
-    ConstantInfo(
-        name="V_DE_observed",
+        name="V_DE",
         symbol=V_DE,
         value=_V_DE_obs_val,
         units="MeV",
-        description="The observed characteristic energy scale of the emergent 3D vacuum.",
+        description="The observed characteristic energy scale of the emergent 3D vacuum (Dark Energy).",
         category=ConstantCategory.OBSERVED_BENCHMARK,
     ),
 
@@ -259,7 +259,7 @@ CONSTANTS: List[ConstantInfo] = [
         symbol=m_euc,
         description="The Euclidean mass parameter appearing in the 4D Lagrangian.",
         category=ConstantCategory.PLACEHOLDER,
-        relation="m₀ * c",
+        relation="m_0 c",
     ),
     ConstantInfo(
         name="m_0",
@@ -285,7 +285,7 @@ CONSTANTS: List[ConstantInfo] = [
     ),
 ]
 
-# --- Dictionary and Utility Function (no changes needed) ---
+# --- Dictionary and Utility Function ---
 CONSTANTS_DICT: Dict[str, ConstantInfo] = {const.name: const for const in CONSTANTS}
 
 def constants_info(as_dict: bool = False) -> List[Dict] | Dict[str, Dict]:
