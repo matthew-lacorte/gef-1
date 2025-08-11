@@ -25,9 +25,9 @@ import numpy as np
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 from enum import Enum
+from dataclasses import asdict
 
 # --- Placeholder for project-specific utilities ---
-def asdict(model): return model.dict()
 def positive_value(cls, v):
     if v is not None and v < 0:
         raise ValueError("Value must be non-negative")
@@ -63,7 +63,7 @@ class ConstantInfo(BaseModel):
 
     _validate_value_positive = field_validator("value", pre=True, always=True)(positive_value)
 
-# --- Symbolic Declarations (from Glossary) ---
+# --- Symbolic Declarations ---
 # Geometry & Flow
 b_0 = sp.Symbol('b₀', real=True, positive=True)
 c_emergent = sp.Symbol('c', real=True, positive=True)
