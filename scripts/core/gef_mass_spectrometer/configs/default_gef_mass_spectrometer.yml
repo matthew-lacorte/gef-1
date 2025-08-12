@@ -1,44 +1,28 @@
-# Configuration for the GEF Mass-to-Geometry Spectrometer
+mode: sweep
 
-# --- Mode ---
-# 'single': Calculates for a single mass value.
-# 'sweep':  Performs a sweep over a range of masses.
-mode: "sweep"
-
-# --- Single Mode Parameters (only used if mode is 'single') ---
-single_mass_MeV: 235.0 # Our refined estimate for the GEF Planck Particle
-
-# --- Sweep Mode Parameters (only used if mode is 'sweep') ---
-sweep:
-  # 'linear' or 'log'. Log is better for covering many orders of magnitude.
-  scale: 'log'
-  start_MeV: 0.1      # Start near the electron mass
-  stop_MeV: 1.0e6     # Go up to 1 TeV
-  num_points: 10000   # Number of points in the sweep
-
-# --- Data Overlay ---
-# A list of known particles to plot on top of the theoretical curve.
-# Format: [Name, Mass_in_MeV, Color_for_plot]
-known_particles:
-  - ["Electron", 0.511, "green"]
-  - ["Muon", 105.7, "green"]
-  - ["Tau", 1777, "green"]
-  - ["Pion (π⁺)", 139.6, "cyan"]
-  - ["Proton", 938.3, "cyan"]
-  - ["W Boson", 80379, "orange"]
-  - ["Z Boson", 91187, "orange"]
-  - ["Higgs Boson", 125100, "red"]
-  - ["Top Quark", 172760, "red"]
-  - ["Planck Mass", 1.22e19, "magenta"] # 1.22e22 MeV = 1.22e19 GeV
-
-# --- Output ---
-# Output directory is now handled by the script using the -o flag
-# The script will create a timestamped directory under outputs/
-
-# --- Plotting Parameters ---
 plotting:
-  figsize: [14, 10]
   dpi: 200
-  title: "GEF Mass-to-Geometry Spectrometer"
-  xlabel: "Particle Rest Mass (MeV/c²)"
-  ylabel: "Predicted GEF Geometric Radius (fm)"
+  figsize: [14, 10]
+  title: GEF Mass-to-Geometry Spectrometer
+  xlabel: "Particle Rest Mass (MeV/c²)"   # UTF-8 superscript
+  ylabel: "Predicted Reduced Compton Length λ̄ (fm)"
+
+single_mass_MeV: 235.0
+
+sweep:
+  num_points: 10000
+  scale: log
+  start_MeV: 0.1
+  stop_MeV: 1.0e6
+
+known_particles:
+  - { name: "Electron",      mass: 0.51099895, color: "#2ca02c" }  # green
+  - { name: "Muon",          mass: 105.658,    color: "#2ca02c" }
+  - { name: "Tau",           mass: 1776.86,    color: "#2ca02c" }
+  - { name: "Pion (π⁺)",     mass: 139.570,    color: "#17becf" }  # cyan
+  - { name: "Proton",        mass: 938.272,    color: "#17becf" }
+  - { name: "W Boson",       mass: 80379,      color: "#ff7f0e" }  # orange
+  - { name: "Z Boson",       mass: 91187,      color: "#ff7f0e" }
+  - { name: "Higgs Boson",   mass: 125100,     color: "#d62728" }  # red
+  - { name: "Top Quark",     mass: 172760,     color: "#d62728" }
+  - { name: "Planck Mass",   mass: 1.22091e19, color: "#e377c2" }  # magenta
