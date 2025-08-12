@@ -1,40 +1,73 @@
+units:
+  mode: physical
+  M0_kg: 5.972e24          # Earth mass scale, as an example
+  L0_m: 6.371e6            # Earth radius scale, for instance
+  beta_source: from_units  # derive β = (G/c^2)(M0/L0)    FORMERLY G_effective
+  beta_scale_factor: 1.0   # tweak if you want a small systematic offset
+
 simulation:
   grid_size: 800
-  window: [-10, 10, -10, 10]
-  beta: .05            # legacy key 'G_effective' also accepted
-  kappa_bar: 1.0        # legacy key 'kappa_inf' also accepted
-  softening_epsilon: 1.0e-4
+
+  # Supply physical window in meters (converted by L0_m), or dimensionless 'window'
+  window_m: [-2.5e7, 2.5e7, -2.5e7, 2.5e7]
+
+  # Mix-and-match: use mass_kg/position_m in physical mode; 'mass'/'position' also accepted.
+  masses:
+    - { mass_kg: 5.97e24, position_m: [-1.5e7, -5.0e6], color: "white" } # ~Earth mass blob
+    - { mass_kg: 7.35e22, position_m: [ 1.8e7,  5.0e6], color: "white" } # ~Moon mass blob
+
+  # κ̄ normalization and numerics
+  kappa_bar: 1.0
+  softening_epsilon: 1.0e-3     # in dimensionless coordinates (meters/L0)
+
+  # Visualization range for κ/κ̄
   clip_min: 0.0
   clip_max: 1.0
-  masses:
-    - { mass: 5.0,  position: [-3.5,  0.0], color: "white" }
-    - { mass: 12.0, position: [ 3.0,  1.5], color: "white" }
+
+  # Auto-β keeps contrast by reducing β if needed (uses W @ percentile)
+  auto_beta: true
+  auto_beta_target_min: 0.05
+  auto_beta_percentile: 99.9
 
 plotting:
   dpi: 220
-  figsize: [14, 10]
+  figsize: [16, 9]
   cmap: "magma"
   interp: "bilinear"
   title_kappa: "GEF Time Dilation (κ/κ̄)"
   title_potential: "Wake Potential W(r)"
+  title_drop: "Δ = β W"
   facecolor: "black"
   show_masses: true
   base_marker_size: 120.0
   marker_scale: 600.0
   mass_size_exponent: 0.3333333333
+
   contours:
     show: true
     levels: 12
     color: "white"
     linewidth: 0.8
     alpha: 0.6
+    show_zero_boundary: true
+    zero_color: "white"
+    zero_ls: "--"
+    zero_lw: 1.2
+    zero_alpha: 0.9
+
   potential_panel:
     show: true
     cmap: "viridis"
-    scale: "linear"     # "log" also supported
-    vmin: null          # null => use robust percentiles
+    scale: "linear"
+    vmin: null
     vmax: null
     clip_percentiles: [2, 98]
 
-# Optional overall output override; otherwise SCRIPT_DIR/_outputs is used
+  drop_panel:
+    show: true
+    cmap: "plasma"
+    vmax: null
+    clip_percentiles: [2, 98]
+
+# Optional: override default output base (otherwise SCRIPT_DIR/_outputs)
 # output_dir: "./_outputs"
