@@ -15,10 +15,10 @@ We keep the GEF narrative, but name the quantity honestly to avoid confusion
 with charge/classical radii.
 
 Usage examples:
-  python gef_radius_calculator.py
-  python gef_radius_calculator.py --mass 938.272 --unit MeV
-  python gef_radius_calculator.py --mass 0.938272 --unit GeV --json
-  python gef_radius_calculator.py --self-test
+  python calculate_radius.py
+  python calculate_radius.py --mass 938.272 --unit MeV
+  python calculate_radius.py --mass 0.938272 --unit GeV --json
+  python calculate_radius.py --self-test
 """
 
 from __future__ import annotations
