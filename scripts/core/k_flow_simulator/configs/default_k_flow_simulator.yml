@@ -1,29 +1,58 @@
-# Configuration for the GEF κ-Flow Simulator
-# Describes a scene with massive objects and visualizes their effect on the local time flow rate.
-
 simulation:
-  grid_size: 1024       
+  grid_size: 800
   window: [-10, 10, -10, 10]
-  
-  # --- SCALING FIX ---
-  # This value is now much smaller to ensure we are in a weak-field regime
-  # where G_eff * M/r << 1. This prevents "crushing" spacetime and reveals the wells.
-  G_effective: 0.08
-  
-  # A list of all massive objects in the simulation.
+  beta: 0.05            # or legacy key: G_effective: 0.05
+  kappa_inf: 1.0
+  softening_epsilon: 1.0e-4
+  clip_min: 0.0
+  clip_max: 1.0
   masses:
-    - mass: 100.0
-      position: [-3.0, 0.0]
-      
-    - mass: 30.0
-      position: [5.0, 2.0]
-      
-    - mass: 5.0
-      position: [-6.0, 7.0]
-
-output_dir: 'results/k_flow_simulations'
+    - { mass: 5.0,  position: [-3.5,  0.0], color: "white" }
+    - { mass: 12.0, position: [ 3.0,  1.5], color: "white" }
 
 plotting:
-  figsize: [12, 12]
-  cmap: 'inferno'
-  dpi: 150
+  dpi: 220
+  figsize: [12, 10]
+  cmap: "magma"
+  interp: "bilinear"
+  title: "GEF Time Dilation Well"
+  facecolor: "black"
+  show_masses: true
+  base_marker_size: 120.0
+  marker_scale: 600.0
+  mass_size_exponent: 0.3333333333
+
+# Optional: override default output base (otherwise uses SCRIPT_DIR/_outputs)
+# output_dir: "./_outputs"
+
+
+
+# # Configuration for the GEF κ-Flow Simulator
+# # Describes a scene with massive objects and visualizes their effect on the local time flow rate.
+
+# simulation:
+#   grid_size: 1024       
+#   window: [-10, 10, -10, 10]
+  
+#   # --- SCALING FIX ---
+#   # This value is now much smaller to ensure we are in a weak-field regime
+#   # where G_eff * M/r << 1. This prevents "crushing" spacetime and reveals the wells.
+#   G_effective: 0.08
+  
+#   # A list of all massive objects in the simulation.
+#   masses:
+#     - mass: 100.0
+#       position: [-3.0, 0.0]
+      
+#     - mass: 30.0
+#       position: [5.0, 2.0]
+      
+#     - mass: 5.0
+#       position: [-6.0, 7.0]
+
+# output_dir: 'results/k_flow_simulations'
+
+# plotting:
+#   figsize: [12, 12]
+#   cmap: 'inferno'
+#   dpi: 150
