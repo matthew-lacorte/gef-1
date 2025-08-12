@@ -39,24 +39,37 @@ from gef.core.constants import CONSTANTS_DICT
 
 # ────────────────────────────────────────────────────── Physical constants
 try:
-    c_const = CONSTANTS_DICT["c"]                  # speed of light
-    planck_const = CONSTANTS_DICT["planck"]        # Planck constant
-    eV_const = CONSTANTS_DICT["electron_volt"]     # 1 eV in joule
+    # Updated keys to align with new constants.py registry
+    c_const = CONSTANTS_DICT["c_observed"]       # observed speed of light
+    hbar_const = CONSTANTS_DICT["hbar"]          # reduced Planck constant
+    eV_const = CONSTANTS_DICT["eV"]              # 1 eV in joules
 except KeyError as err:
     raise RuntimeError(f"Constant {err} missing from CONSTANTS_DICT")
 
-c = c_const.value or 299_792_458                   # fallback exact CODATA
-if planck_const.value is None:
-    raise ValueError("Numeric value for Planck constant not set in constants.py")
-planck = planck_const.value
+c = c_const.value or 299_792_458.0                 # fallback exact CODATA
+if hbar_const.value is None:
+    raise ValueError("Numeric value for reduced Planck constant (hbar) not set in constants.py")
+
+# Define tau safely (2*pi), avoiding new imports if environment is constrained
+try:
+    from math import tau  # Python 3.6+
+except Exception:
+    tau = 2.0 * 3.141592653589793
+
+hbar = hbar_const.value
+planck = hbar * tau                                 # h = 2π ħ
 electron_volt = eV_const.value
 
-# ==============================================================================
+# ============================================================================== 
 # 1. CORE COMPUTATION
 # ==============================================================================
 
 def compute_radius_from_mass(mass_MeV: float) -> Tuple[float, float, float]:
     """Return (frequency Hz, tick s, radius m) for a given rest mass in MeV/c²."""
+    try:
+        mass_MeV = float(mass_MeV)
+    except Exception:
+        return np.nan, np.nan, np.nan
     if mass_MeV <= 0:
         return np.nan, np.nan, np.nan
     E_P = mass_MeV * 1e6 * electron_volt           # J
@@ -70,22 +83,26 @@ def compute_radius_from_mass(mass_MeV: float) -> Tuple[float, float, float]:
 # ==============================================================================
 
 def generate_mass_sweep(cfg: dict) -> np.ndarray:
-    """Yields an array of masses (MeV) according to the sweep config."""
+    """Yields an array of masses (MeV) according to the sweep config.
+
+    Ensures numeric casting in case YAML loads numeric-looking strings.
+    """
     sweep_cfg = cfg['sweep']
-    if sweep_cfg['scale'] == 'log':
+    scale = str(sweep_cfg.get('scale', 'linear')).lower()
+    start = float(sweep_cfg['start_MeV'])
+    stop = float(sweep_cfg['stop_MeV'])
+    num = int(sweep_cfg['num_points'])
+
+    if scale == 'log':
         return np.logspace(
-            np.log10(sweep_cfg['start_MeV']),
-            np.log10(sweep_cfg['stop_MeV']),
-            sweep_cfg['num_points']
+            np.log10(start),
+            np.log10(stop),
+            num
         )
-    elif sweep_cfg['scale'] == 'linear':
-        return np.linspace(
-            sweep_cfg['start_MeV'],
-            sweep_cfg['stop_MeV'],
-            sweep_cfg['num_points']
-        )
+    elif scale == 'linear':
+        return np.linspace(start, stop, num)
     else:
-        raise ValueError(f"Unknown sweep scale: {sweep_cfg['scale']}")
+        raise ValueError(f"Unknown sweep scale: {scale}")
 
 # ==============================================================================
 # 3. MAIN EXECUTION LOGIC
@@ -140,9 +157,10 @@ def main(argv: List[str] | None = None) -> int:
     logger.info(f"Output directory: {out_dir}")
     
     # --- Perform Calculation ---
-    if cfg['mode'] == 'single':
-        masses_to_process = [cfg['single_mass_MeV']]
-    if cfg['mode'] == 'sweep':
+    mode = str(cfg['mode']).lower()
+    if mode == 'single':
+        masses_to_process = [float(cfg['single_mass_MeV'])]
+    elif mode == 'sweep':
         masses_to_process = generate_mass_sweep(cfg)
     else:
         logger.error(f"Error: Invalid mode '{cfg['mode']}' in config file.")
@@ -178,9 +196,10 @@ def main(argv: List[str] | None = None) -> int:
     # Overlay the known particles
     logger.info("Overlaying known particles on the plot...")
     for name, mass, color in cfg['known_particles']:
-        freq, tick, radius = compute_radius_from_mass(mass)
+        mass_val = float(mass)
+        freq, tick, radius = compute_radius_from_mass(mass_val)
         radius_fm = radius * 1e15
-        ax.plot(mass, radius_fm, 'o', ms=10, label=f'{name} ({mass:.1f} MeV)',
+        ax.plot(mass_val, radius_fm, 'o', ms=10, label=f'{name} ({mass_val:.1f} MeV)',
                 color=color, zorder=2, markeredgecolor='black')
     
     # --- Plot Cosmetics ---

@@ -51,7 +51,11 @@ class ConstantInfo(BaseModel):
     """Metadata and value(s) for a single GEF framework constant."""
     name: str = Field(..., description="Canonical name of the constant (used as key).")
     symbol: Optional[sp.Basic] = Field(None, description="SymPy symbol for analytic calculations.")
-    value: Optional[float] = Field(None, description="Default or reference numeric value.")
+    value: Optional[float] = Field(
+        None,
+        description="Default or reference numeric value.",
+        validate_default=True,
+    )
     units: str = Field("dimensionless", description="Units of the constant.")
     description: str = Field("", description="Brief description, aligned with the canonical glossary.")
     category: ConstantCategory = Field(..., description="The primary category/role of the constant.")
@@ -61,13 +65,16 @@ class ConstantInfo(BaseModel):
         frozen = True
         arbitrary_types_allowed = True
 
-    _validate_value_positive = field_validator("value", pre=True, always=True)(positive_value)
+    @field_validator("value", mode="before")
+    @classmethod
+    def _validate_value_positive(cls, v):
+        return positive_value(cls, v)
 
 # --- Symbolic Declarations ---
 # Geometry & Flow
 b_0 = sp.Symbol('b₀', real=True, positive=True)
 c_emergent = sp.Symbol('c', real=True, positive=True)
-kappa_inf = sp.Symbol('κ∞', real=True, positive=True)
+kappa_bar = sp.Symbol('κ̄', real=True, positive=True)
 epsilon_0 = sp.Symbol('ε₀', real=True, positive=True)
 
 # Fields & Couplings
@@ -98,7 +105,7 @@ eV = sp.Symbol('eV', real=True, positive=True)
 
 __all__ = [
     "ConstantInfo", "CONSTANTS", "CONSTANTS_DICT", "constants_info", "ConstantCategory",
-    "b_0", "c_emergent", "kappa_inf", "epsilon_0", "lambda_A", "lambda_G", "h_sq",
+    "b_0", "c_emergent", "kappa_bar", "epsilon_0", "lambda_A", "lambda_G", "h_sq",
     "M_fund", "M_Pl", "V_DE", "P_factor", "G_newton", "m_euc", "m_0",
     "alpha_em", "alpha_s", "alpha_G", "c_observed", "hbar", "eV",
     "__version__",
@@ -132,8 +139,8 @@ CONSTANTS: List[ConstantInfo] = [
         category=ConstantCategory.MODEL_INPUT,
     ),
     ConstantInfo(
-        name="kappa_inf",
-        symbol=kappa_inf,
+        name="kappa_bar",
+        symbol=kappa_bar,
         description="The baseline magnitude of the κ-flow in empty space.",
         category=ConstantCategory.MODEL_INPUT,
     ),
