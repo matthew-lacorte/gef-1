@@ -1,8 +1,8 @@
 simulation:
   grid_size: 800
   window: [-10, 10, -10, 10]
-  beta: 0.05            # or legacy key: G_effective: 0.05
-  kappa_inf: 1.0
+  beta: .05            # legacy key 'G_effective' also accepted
+  kappa_bar: 1.0        # legacy key 'kappa_inf' also accepted
   softening_epsilon: 1.0e-4
   clip_min: 0.0
   clip_max: 1.0
@@ -12,47 +12,29 @@ simulation:
 
 plotting:
   dpi: 220
-  figsize: [12, 10]
+  figsize: [14, 10]
   cmap: "magma"
   interp: "bilinear"
-  title: "GEF Time Dilation Well"
+  title_kappa: "GEF Time Dilation (κ/κ̄)"
+  title_potential: "Wake Potential W(r)"
   facecolor: "black"
   show_masses: true
   base_marker_size: 120.0
   marker_scale: 600.0
   mass_size_exponent: 0.3333333333
+  contours:
+    show: true
+    levels: 12
+    color: "white"
+    linewidth: 0.8
+    alpha: 0.6
+  potential_panel:
+    show: true
+    cmap: "viridis"
+    scale: "linear"     # "log" also supported
+    vmin: null          # null => use robust percentiles
+    vmax: null
+    clip_percentiles: [2, 98]
 
-# Optional: override default output base (otherwise uses SCRIPT_DIR/_outputs)
+# Optional overall output override; otherwise SCRIPT_DIR/_outputs is used
 # output_dir: "./_outputs"
-
-
-
-# # Configuration for the GEF κ-Flow Simulator
-# # Describes a scene with massive objects and visualizes their effect on the local time flow rate.
-
-# simulation:
-#   grid_size: 1024       
-#   window: [-10, 10, -10, 10]
-  
-#   # --- SCALING FIX ---
-#   # This value is now much smaller to ensure we are in a weak-field regime
-#   # where G_eff * M/r << 1. This prevents "crushing" spacetime and reveals the wells.
-#   G_effective: 0.08
-  
-#   # A list of all massive objects in the simulation.
-#   masses:
-#     - mass: 100.0
-#       position: [-3.0, 0.0]
-      
-#     - mass: 30.0
-#       position: [5.0, 2.0]
-      
-#     - mass: 5.0
-#       position: [-6.0, 7.0]
-
-# output_dir: 'results/k_flow_simulations'
-
-# plotting:
-#   figsize: [12, 12]
-#   cmap: 'inferno'
-#   dpi: 150
