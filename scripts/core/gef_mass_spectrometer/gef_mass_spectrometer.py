@@ -204,7 +204,7 @@ def _default_cfg_path(script_dir: Path) -> Path:
 def _new_outdir(script_dir: Path, base: Path | None) -> Path:
     timestamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     run_id = uuid.uuid4().hex[:6]
-    out_base = (base or script_dir / "outputs").resolve()
+    out_base = (base or script_dir / "_outputs").resolve()
     out_dir = out_base / f"{timestamp}-{run_id}"
     out_dir.mkdir(parents=True, exist_ok=False)
     (out_dir / "results").mkdir()

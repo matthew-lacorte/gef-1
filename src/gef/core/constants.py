@@ -22,7 +22,7 @@ __version__ = "1.2.0"
 import sympy as sp
 import pint
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Dict
 from enum import Enum
 from dataclasses import asdict
@@ -47,28 +47,45 @@ class ConstantCategory(str, Enum):
     CONVERSION = "Conversion"                   # A unit conversion factor (e.g., eV to Joules).
     PLACEHOLDER = "Placeholder"                 # A particle-specific or context-dependent value.
 
-class ConstantInfo(BaseModel):
-    """Metadata and value(s) for a single GEF framework constant."""
-    name: str = Field(..., description="Canonical name of the constant (used as key).")
-    symbol: Optional[sp.Basic] = Field(None, description="SymPy symbol for analytic calculations.")
-    value: Optional[float] = Field(
-        None,
-        description="Default or reference numeric value.",
-        validate_default=True,
-    )
-    units: str = Field("dimensionless", description="Units of the constant.")
-    description: str = Field("", description="Brief description, aligned with the canonical glossary.")
-    category: ConstantCategory = Field(..., description="The primary category/role of the constant.")
-    relation: Optional[str] = Field(None, description="Symbolic relationship to other constants (LaTeX format).")
+# class ConstantInfo(BaseModel):
+#     """Metadata and value(s) for a single GEF framework constant."""
+#     name: str = Field(..., description="Canonical name of the constant (used as key).")
+#     symbol: Optional[sp.Basic] = Field(None, description="SymPy symbol for analytic calculations.")
+#     value: Optional[float] = Field(
+#         None,
+#         description="Default or reference numeric value.",
+#         validate_default=True,
+#     )
+#     units: str = Field("dimensionless", description="Units of the constant.")
+#     description: str = Field("", description="Brief description, aligned with the canonical glossary.")
+#     category: ConstantCategory = Field(..., description="The primary category/role of the constant.")
+#     relation: Optional[str] = Field(None, description="Symbolic relationship to other constants (LaTeX format).")
 
-    class Config:
-        frozen = True
-        arbitrary_types_allowed = True
+#     class Config:
+#         frozen = True
+#         arbitrary_types_allowed = True
+
+#     @field_validator("value", mode="before")
+#     @classmethod
+#     def _validate_value_positive(cls, v):
+#         return positive_value(cls, v)
+
+class ConstantInfo(BaseModel):
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    name: str
+    symbol: sp.Basic | None = Field(None)
+    value: float | None = Field(None, description="Default/reference numeric value.", validate_default=True)
+    units: str = "dimensionless"
+    description: str = ""
+    category: ConstantCategory
+    relation: str | None = None
 
     @field_validator("value", mode="before")
     @classmethod
-    def _validate_value_positive(cls, v):
-        return positive_value(cls, v)
+    def _nonnegative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Value must be non-negative")
+        return v
 
 # --- Symbolic Declarations ---
 # Geometry & Flow
@@ -80,7 +97,7 @@ epsilon_0 = sp.Symbol('ε₀', real=True, positive=True)
 # Fields & Couplings
 lambda_A = sp.Symbol('λ_A', real=True, positive=True)
 lambda_G = sp.Symbol('λ_G', real=True, positive=True)
-h_sq = sp.Symbol('h²', real=True, positive=True)
+g_H_sq = sp.Symbol('g_H^2', real=True, positive=True)   # renamed from h²
 
 # Mass, Energy & Scales
 M_fund = sp.Symbol('M_fund', real=True, positive=True)
@@ -105,10 +122,9 @@ eV = sp.Symbol('eV', real=True, positive=True)
 
 __all__ = [
     "ConstantInfo", "CONSTANTS", "CONSTANTS_DICT", "constants_info", "ConstantCategory",
-    "b_0", "c_emergent", "kappa_bar", "epsilon_0", "lambda_A", "lambda_G", "h_sq",
+    "b_0", "c_emergent", "kappa_bar", "epsilon_0", "lambda_A", "lambda_G", "g_H_sq",
     "M_fund", "M_Pl", "V_DE", "P_factor", "G_newton", "m_euc", "m_0",
-    "alpha_em", "alpha_s", "alpha_G", "c_observed", "hbar", "eV",
-    "__version__",
+    "alpha_em", "alpha_s", "alpha_G", "c_observed", "hbar", "eV", "version",
 ]
 
 # --- Numerical Base Values for Calculations ---
@@ -151,8 +167,8 @@ CONSTANTS: List[ConstantInfo] = [
         category=ConstantCategory.MODEL_INPUT,
     ),
     ConstantInfo(
-        name="h_sq",
-        symbol=h_sq,
+        name="g_H_sq",
+        symbol=g_H_sq,
         description="The fundamental constant defining the energy scale of the short-range 'Hook' interaction.",
         category=ConstantCategory.MODEL_INPUT,
     ),
