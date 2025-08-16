@@ -7,8 +7,13 @@
 # mode: 'julia'
 # mode: 'mandelbrot'
 # mode: 'orbit'
-mode: 'quantize-gravity'
+mode: 'mandelbrot'
 
+
+sweep_parameters:
+  start_angle_pi: 0.75    # Start angle in units of π
+  end_angle_pi: 0.75    # End angle in units of π  
+  num_frames: 1        # Number of frames for the animation
 
 genesis_sweep_params:
   # The parameter within 'quantize_gravity_params' to animate.
@@ -18,7 +23,7 @@ genesis_sweep_params:
   # --- Sweep Parameters ---
   start_angle_pi: 0.0
   end_angle_pi: 2.0 
-  num_frames: 300
+  num_frames: 3
 
 
   # The range of values for the sweep.
