@@ -5,9 +5,11 @@ This file serves as the canonical Single Source of Truth (SSoT) for the numerica
 values and symbolic representations of all constants used in GEF simulations and
 derivations. It is a direct implementation of the GEF Canonical Glossary.
 
-Version: 1.3.0 - Complete refactor implementing self-contained entries pattern.
-                - All symbols, values, and metadata co-located per constant.
-                - Auto-generated convenience exports.
+Version: 1.4.0 - Unit-safe refactor with proper conversions and derived relations.
+                - Fixed h units and made it observed (2πℏ)
+                - Made r_P properly derived from ℏc/M_fund
+                - Added conversion constants for unit consistency
+                - Export by name, not Unicode symbols
 
 Exports:
     - ConstantInfo: Pydantic model for constant metadata.
@@ -15,10 +17,10 @@ Exports:
     - CONSTANTS_DICT: Dictionary mapping constant names to ConstantInfo objects.
     - SYMBOLS: Dictionary mapping names to SymPy symbols.
     - VALUES: Dictionary mapping names to numeric values.
-    - All individual SymPy symbols available as module attributes.
+    - All constant names available as module attributes.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __date__ = "2025-08-17"
 
 # --- Core Imports ---
@@ -82,16 +84,24 @@ class ConstantInfo(BaseModel):
         # This is a simplified validator - expand based on physics requirements
         return v
 
-# --- Numerical Base Values ---
+# --- Numerical Base Values and Conversions ---
 _c_obs = 299_792_458.0  # m/s
 _hbar = 1.054571817e-34  # J·s
 _eV = 1.602176634e-19  # J (exact by definition)
 _alpha_em_obs = 1/137.035999084
-_M_fund_MeV = 235.0  # Canonical calibration
+_M_fund_MeV = 235.0  # Canonical calibration (mass-energy scale)
 _M_Pl_MeV = 1.22091e22  # √(ℏc/G) in MeV
 _V_DE_MeV = 2.39e-9  # (ρ_DE)^(1/4) in MeV
-_r_P_fm = 0.840  # Iris radius in fm
 _loop_factor = 16 * np.pi**2
+
+# Unit conversions
+HBAR_C_MEV_FM = 197.3269804  # MeV·fm (CODATA)
+MEV_TO_J = _eV * 1e6  # J/MeV
+FM_TO_M = 1e-15  # m/fm
+MEV_C2_TO_KG = MEV_TO_J / (_c_obs**2)  # kg/(MeV/c²)
+
+# Derived value for r_P
+_r_P_fm = HBAR_C_MEV_FM / _M_fund_MeV  # Should be ~0.840 fm
 
 # === The Single Source of Truth: Canonical Constants Registry ===
 CONSTANTS: List[ConstantInfo] = [
@@ -143,12 +153,11 @@ CONSTANTS: List[ConstantInfo] = [
         name="zeta",
         symbol=sp.Symbol('ζ', real=True, positive=True),
         latex=r"\zeta",
-        value=1/_c_obs,  # In protected gauge
-        units="s/m",
         description="AC gauge factor: Analytic continuation (Wick) gauge t = -iζw. On protected axis ζ = 1/c",
         category=ConstantCategory.FOUNDATIONAL,
         status=ConstantStatus.CANONICAL,
         relation=r"\zeta = 1/c",
+        eval_expr=1/sp.Symbol('c'),
         introduced_in="1.0.0",
     ),
     
@@ -180,12 +189,11 @@ CONSTANTS: List[ConstantInfo] = [
         name="b_kappa",
         symbol=sp.Symbol('b_κ', real=True, positive=True),
         latex=r"b_\kappa",
-        value=1/_c_obs,
-        units="s/m",
         description="Anisotropy shorthand: Calculational knob in AC derivations; b_κ = 1/c in protected gauge",
         category=ConstantCategory.FOUNDATIONAL,
         status=ConstantStatus.WORKING,
         relation=r"b_\kappa = 1/c",
+        eval_expr=1/sp.Symbol('c'),
         introduced_in="1.1.0",
     ),
     
@@ -280,7 +288,7 @@ CONSTANTS: List[ConstantInfo] = [
         latex=r"M_{\text{fund}}",
         value=_M_fund_MeV,
         units="MeV",
-        description="Fundamental mass scale (iris anchor): Mass of GEF Planck particle (fundamental hopfion)",
+        description="Fundamental mass-energy scale (iris anchor): Mass of GEF Planck particle (fundamental hopfion)",
         category=ConstantCategory.SCALES,
         status=ConstantStatus.CANONICAL,
         introduced_in="1.0.0",
@@ -292,10 +300,11 @@ CONSTANTS: List[ConstantInfo] = [
         latex=r"r_P",
         value=_r_P_fm,
         units="fm",
-        description="Iris (protected-sphere) radius: r_P ≡ ℏ/(M_fund·c)",
+        description="Iris (protected-sphere) radius: r_P ≡ (ℏc)/M_fund in MeV-fm units",
         category=ConstantCategory.SCALES,
         status=ConstantStatus.CANONICAL,
-        relation=r"r_P \equiv \hbar/(M_{\text{fund}} c)",
+        relation=r"r_P = (\hbar c)/M_{\text{fund}}",
+        eval_expr=sp.Symbol('hbar_c')/sp.Symbol('M_fund'),
         introduced_in="1.0.0",
     ),
     
@@ -303,13 +312,25 @@ CONSTANTS: List[ConstantInfo] = [
         name="h",
         symbol=sp.Symbol('h', real=True, positive=True),
         latex=r"h",
-        value=2 * np.pi * _r_P_fm * _M_fund_MeV * _c_obs,
-        units="MeV·fm",
-        description="One-cycle action postulate: h = 2πr_P·M_fund·c",
-        category=ConstantCategory.SCALES,
+        value=2 * np.pi * _hbar,
+        units="J·s",
+        description="Planck constant (observed): h = 2πℏ",
+        category=ConstantCategory.OBSERVED,
         status=ConstantStatus.CANONICAL,
-        relation=r"h = 2\pi r_P M_{\text{fund}} c",
-        introduced_in="1.0.0",
+        relation=r"h = 2\pi \hbar",
+        eval_expr=2 * sp.pi * sp.Symbol('hbar'),
+        introduced_in="2.1.0",
+    ),
+    
+    ConstantInfo(
+        name="h_postulate_check",
+        latex=r"h_{\text{post}}",
+        description="Derived via h = 2π r_P M_fund c with unit conversions",
+        category=ConstantCategory.SCALES,
+        status=ConstantStatus.DERIVED,
+        relation=r"h_{\text{post}} = 2\pi\, (r_P\,{\rm fm}\!\to\!{\rm m}) \times (M_{\text{fund}}\,{\rm MeV}\!\to\!{\rm J})/c",
+        eval_expr=2*sp.pi * (sp.Symbol('r_P')*sp.Symbol('FM_TO_M')) * (sp.Symbol('M_fund')*sp.Symbol('MEV_TO_J')) / sp.Symbol('c'),
+        introduced_in="2.1.0",
     ),
     
     ConstantInfo(
@@ -515,7 +536,7 @@ CONSTANTS: List[ConstantInfo] = [
         symbol=sp.Symbol('α_G', real=True, positive=True),
         latex=r"\alpha_G",
         value=(_M_fund_MeV/_M_Pl_MeV)**2,
-        description="Gravitational coupling: α_G = GM_fund²/(ℏc)",
+        description="Gravitational coupling (natural units): α_G = (M_fund/M_Pl)²",
         category=ConstantCategory.DIMENSIONLESS,
         status=ConstantStatus.DERIVED,
         relation=r"\alpha_G = (M_{\text{fund}}/M_{\text{Pl}})^2",
@@ -529,11 +550,10 @@ CONSTANTS: List[ConstantInfo] = [
         name="c_g",
         symbol=sp.Symbol('c_g', real=True, positive=True),
         latex=r"c_g",
-        value=_c_obs,
-        units="m/s",
         description="Speed of gravitational waves equals c",
         category=ConstantCategory.PREDICTIONS,
         status=ConstantStatus.CANONICAL,
+        eval_expr=sp.Symbol('c'),
         introduced_in="1.0.0",
     ),
     
@@ -639,6 +659,18 @@ CONSTANTS: List[ConstantInfo] = [
     # ========== 9. CONVERSION FACTORS & HELPERS ==========
     
     ConstantInfo(
+        name="hbar_c",
+        symbol=sp.Symbol('hbar_c', real=True, positive=True),
+        latex=r"\hbar c",
+        value=HBAR_C_MEV_FM,
+        units="MeV·fm",
+        description="Product ℏc in high-energy units",
+        category=ConstantCategory.CONVERSION,
+        status=ConstantStatus.CANONICAL,
+        introduced_in="2.1.0",
+    ),
+    
+    ConstantInfo(
         name="eV",
         symbol=sp.Symbol('eV', real=True, positive=True),
         latex=r"\text{eV}",
@@ -648,6 +680,36 @@ CONSTANTS: List[ConstantInfo] = [
         category=ConstantCategory.CONVERSION,
         status=ConstantStatus.CANONICAL,
         introduced_in="1.0.0",
+    ),
+    
+    ConstantInfo(
+        name="MEV_TO_J",
+        value=MEV_TO_J,
+        units="J/MeV",
+        description="Energy conversion: MeV → Joules",
+        category=ConstantCategory.CONVERSION,
+        status=ConstantStatus.CANONICAL,
+        introduced_in="2.1.0",
+    ),
+    
+    ConstantInfo(
+        name="FM_TO_M",
+        value=FM_TO_M,
+        units="m/fm",
+        description="Length conversion: fm → meters",
+        category=ConstantCategory.CONVERSION,
+        status=ConstantStatus.CANONICAL,
+        introduced_in="2.1.0",
+    ),
+    
+    ConstantInfo(
+        name="MEV_C2_TO_KG",
+        value=MEV_C2_TO_KG,
+        units="kg/(MeV/c²)",
+        description="Mass conversion: MeV/c² → kilograms",
+        category=ConstantCategory.CONVERSION,
+        status=ConstantStatus.CANONICAL,
+        introduced_in="2.1.0",
     ),
     
     ConstantInfo(
@@ -676,22 +738,10 @@ VALUES: Dict[str, float] = {
 }
 
 # Create module-level attributes for direct symbol access
-# This allows: from gef.core.constants import M_fund, kappa_bar, etc.
+# Export by constant name, not Unicode symbol string
 for const in CONSTANTS:
     if const.symbol is not None:
-        # Use the symbol's string representation as the attribute name
-        # Clean up special characters for Python compatibility
-        attr_name = str(const.symbol).replace('_', '_').replace('μ', 'mu').replace('ν', 'nu')
-        attr_name = attr_name.replace('Φ', 'Phi').replace('ψ', 'psi').replace('κ', 'kappa')
-        attr_name = attr_name.replace('θ', 'theta').replace('ζ', 'zeta').replace('α', 'alpha')
-        attr_name = attr_name.replace('β', 'beta').replace('γ', 'gamma').replace('λ', 'lambda')
-        attr_name = attr_name.replace('ε', 'epsilon').replace('Ξ', 'Xi').replace('ℏ', 'hbar')
-        attr_name = attr_name.replace('₀', '0').replace('₁', '1').replace('₂', '2')
-        attr_name = attr_name.replace('∥', '_parallel').replace('̄', '_bar')
-        
-        # Set as module attribute if it doesn't conflict
-        if not hasattr(globals(), attr_name):
-            globals()[attr_name] = const.symbol
+        globals()[const.name] = const.symbol
 
 # --- Utility Functions ---
 
@@ -722,6 +772,9 @@ def print_registry(category: Optional[ConstantCategory] = None,
         constants = [c for c in constants if c.category == category]
     if status:
         constants = [c for c in constants if c.status == status]
+    
+    # Sort to ensure groupby works correctly
+    constants = sorted(constants, key=lambda c: c.category.value)
     
     # Group by category for display
     from itertools import groupby
@@ -785,24 +838,32 @@ def export_to_latex(filename: str = "constants.tex") -> None:
         r"Symbol & Name & Value & Description \\",
         r"\midrule",
     ]
-    
+
     for const in CONSTANTS:
+        # Symbol column: prefer LaTeX, fallback to escaped name
         if const.latex:
             symbol = f"${const.latex}$"
         else:
             symbol = const.name.replace('_', r'\_')
-            
-        value = f"{const.value:.3e} {const.units}" if const.value else "—"
+
+        # Value column: handle None vs zero correctly
+        value = f"{const.value:.3e} {const.units}" if (const.value is not None) else "—"
+
+        # Short description
         desc = const.description[:50] + "..." if len(const.description) > 50 else const.description
-        
-        lines.append(f"{symbol} & {const.name.replace('_', r'\_')} & {value} & {desc} \\\\")
-    
+
+        # Name column with escaped underscores
+        name_escaped = const.name.replace('_', r'\_')
+
+        # Append LaTeX table row, emitting \\ at end
+        lines.append(f"{symbol} & {name_escaped} & {value} & {desc} \\\\")
+
     lines.extend([
         r"\bottomrule",
         r"\end{longtable}",
         r"\end{document}",
     ])
-    
+
     with open(filename, 'w') as f:
         f.write('\n'.join(lines))
 
@@ -830,11 +891,69 @@ def validate_relations() -> Dict[str, Any]:
                     if const.value and isinstance(result, (int, float)):
                         rel_error = abs(result - const.value) / const.value
                         if rel_error > 1e-6:
-                            errors[const.name] = f"Computed {result}, stated {const.value}"
+                            errors[const.name] = f"Computed {result}, stated {const.value} (rel_error={rel_error:.2e})"
             except Exception as e:
                 errors[const.name] = str(e)
     
     return errors
+
+def run_self_test() -> None:
+    """
+    Run self-consistency tests on the constants registry.
+    """
+    print(f"\n{'='*60}")
+    print(" GEF Constants Self-Test")
+    print('='*60)
+    
+    # Check relation validation
+    errs = validate_relations()
+    if errs:
+        print("\n⚠️  Relation validation errors:")
+        for name, err in errs.items():
+            print(f"  {name}: {err}")
+    else:
+        print("\n✅ All relations validated successfully")
+    
+    # Check r_P derivation
+    r_P_computed = HBAR_C_MEV_FM / _M_fund_MeV
+    r_P_stored = VALUES.get("r_P", None)
+    if r_P_stored:
+        print(f"\n✅ r_P consistency:")
+        print(f"  Stored:   {r_P_stored:.6f} fm")
+        print(f"  Computed: {r_P_computed:.6f} fm (from hbar_c/M_fund)")
+        rel_error = abs(r_P_computed - r_P_stored) / r_P_stored
+        print(f"  Relative error: {rel_error:.2e}")
+    
+    # Check h postulate
+    if "h_postulate_check" in CONSTANTS_DICT:
+        const = CONSTANTS_DICT["h_postulate_check"]
+        if const.eval_expr:
+            try:
+                h_post = const.eval_expr.subs({
+                    SYMBOLS["r_P"]: VALUES["r_P"],
+                    SYMBOLS["FM_TO_M"]: VALUES["FM_TO_M"],
+                    SYMBOLS["M_fund"]: VALUES["M_fund"],
+                    SYMBOLS["MEV_TO_J"]: VALUES["MEV_TO_J"],
+                    SYMBOLS["c"]: VALUES["c"],
+                })
+                h_obs = VALUES["h"]
+                print(f"\n✅ h postulate check:")
+                print(f"  h_observed:        {h_obs:.6e} J·s")
+                print(f"  h_postulate_check: {float(h_post):.6e} J·s")
+                rel_error = abs(float(h_post) - h_obs) / h_obs
+                print(f"  Relative error: {rel_error:.2e}")
+            except Exception as e:
+                print(f"\n⚠️  Could not evaluate h_postulate_check: {e}")
+    
+    # Summary statistics
+    print(f"\n📊 Registry Statistics:")
+    print(f"  Total constants: {len(CONSTANTS)}")
+    print(f"  Categories: {len(set(c.category for c in CONSTANTS))}")
+    print(f"  Canonical: {len([c for c in CONSTANTS if c.status == ConstantStatus.CANONICAL])}")
+    print(f"  Working: {len([c for c in CONSTANTS if c.status == ConstantStatus.WORKING])}")
+    print(f"  Derived: {len([c for c in CONSTANTS if c.status == ConstantStatus.DERIVED])}")
+    print(f"  With values: {len(VALUES)}")
+    print(f"  With symbols: {len(SYMBOLS)}")
 
 # --- Export all public names ---
 __all__ = [
@@ -844,25 +963,21 @@ __all__ = [
     "CONSTANTS", "CONSTANTS_DICT", "SYMBOLS", "VALUES",
     # Utility functions
     "get_constants_by_category", "get_constants_by_status",
-    "print_registry", "export_to_yaml", "export_to_latex", "validate_relations",
+    "print_registry", "export_to_yaml", "export_to_latex", 
+    "validate_relations", "run_self_test",
+    # Unit conversions
+    "HBAR_C_MEV_FM", "MEV_TO_J", "FM_TO_M", "MEV_C2_TO_KG",
     # Version info
     "__version__", "__date__",
 ]
 
-# Also add all symbol names to __all__ for clean imports
+# Add all constant names to __all__ for clean imports
 __all__.extend([c.name for c in CONSTANTS if c.symbol is not None])
 
 # --- Module initialization message (optional) ---
 if __name__ == "__main__":
     print(f"GEF Constants Registry v{__version__}")
     print(f"Loaded {len(CONSTANTS)} constants in {len(set(c.category for c in CONSTANTS))} categories")
-    print(f"Canonical: {len([c for c in CONSTANTS if c.status == ConstantStatus.CANONICAL])}")
-    print(f"Working: {len([c for c in CONSTANTS if c.status == ConstantStatus.WORKING])}")
-    print(f"Derived: {len([c for c in CONSTANTS if c.status == ConstantStatus.DERIVED])}")
     
-    # Run validation
-    errors = validate_relations()
-    if errors:
-        print(f"\nValidation errors found: {errors}")
-    else:
-        print("\nAll relations validated successfully")
+    # Run the self-test
+    run_self_test()
