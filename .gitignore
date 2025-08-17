@@ -8,6 +8,5 @@ base_config.yml
 used_config.yml
 outputs/
 _outputs/
-configs/
 .obsidian/
 data/
