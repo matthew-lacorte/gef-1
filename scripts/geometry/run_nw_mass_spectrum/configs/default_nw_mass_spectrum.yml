@@ -45,16 +45,23 @@ friction: 0.95               # Friction term for the "heavy ball" solver.
 
 # --- Experiment Sweep Configuration ---
 # Defines the specific values of N_w to test.
-nw_sweep_range:
-  - 1
-  - 2
-  - 10
-  - 100
-  - 200
-  - 207 # Test directly on the resonance peak
-  - 215
-  # ... Add more points to scan the spectrum ...
-  - 3477
+
+processes: 6               # or 2
+relaxation_n_skip: 200     # transient steps
+relaxation_n_iter: 256     # measurement steps
+# nw_sweep_range: [1, 2, 10, 100, 200, 207, 215, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3250, 3400, 3477, 3550, 5000]
+nw_sweep_range: [1, 2, 10, 100, 180, 185, 190, 195, 200, 205, 207, 210, 215, 220, 225, 230, 240, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3250, 3400, 3405, 3410, 3415, 3420, 3425, 3430, 3435, 3440, 3445, 3450, 3455, 3460, 3465, 3470, 3475, 3477, 3480, 3485, 3490, 3495, 3500, 3505, 3510, 3515, 3520, 3525, 3530, 3535, 3540, 3545, 3550, 3600, 3700, 3800, 3900, 4000, 4250, 4500, 4750, 5000]
+
+# nw_sweep_range:
+#   - 1
+#   - 2
+#   - 10
+#   - 100
+#   - 200
+#   - 207 # Test directly on the resonance peak
+#   - 215
+#   # ... Add more points to scan the spectrum ...
+#   - 3477
 
 # The energy of the vacuum state (Φ=1 everywhere) for this grid and parameter set.
 # This must be pre-calculated or set to a known value for mass calculation.

@@ -150,7 +150,14 @@ class SimulationWorker:
             solver = HopfionRelaxer(current_config)
             solver.initialize_field(nw=nw)
 
-            phi_series, final_energy = solver.run_relaxation()
+            # Optional relaxation controls from config
+            n_skip = int(base_config.get('relaxation_n_skip', 1000))
+            n_iter = int(base_config.get('relaxation_n_iter', 1024))
+
+            t0 = datetime.datetime.now()
+            phi_series, final_energy = solver.run_relaxation(n_skip=n_skip, n_iter=n_iter)
+            dt = (datetime.datetime.now() - t0).total_seconds()
+            logger.info(f"Finished N_w={nw} in {dt:.1f}s; E_final={final_energy}")
             converged = bool(np.isfinite(final_energy))
 
             # Validate results
@@ -221,7 +228,12 @@ class MassSpectrumAnalyzer:
             DataFrame containing all simulation results
         """
         nw_values = self.config['nw_sweep_range']
-        num_cores = max(1, multiprocessing.cpu_count() - 1)
+        # Allow user to cap process count to avoid oversubscription with Numba threads
+        requested = int(self.config.get('processes', 0))
+        if requested > 0:
+            num_cores = requested
+        else:
+            num_cores = max(1, min(2, multiprocessing.cpu_count() - 1))
         
         self.logger.info(f"Running simulations for N_w values: {nw_values}")
         self.logger.info(f"Using {num_cores} parallel processes")
