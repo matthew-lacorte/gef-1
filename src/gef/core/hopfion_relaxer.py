@@ -10,9 +10,15 @@ import os
 import numpy as np
 from numba import config, njit, prange
 
-# Configure Numba for M1 Max optimization
-os.environ["NUMBA_NUM_THREADS"] = str(os.cpu_count())  # Use all cores
-config.THREADING_LAYER = "tbb"  # Better threading on ARM
+# Configure Numba threading conservatively and respect existing environment
+# Do NOT override if the user already set NUMBA_NUM_THREADS.
+if "NUMBA_NUM_THREADS" not in os.environ:
+    # Allow alternate env knob 'GEF_NUMBA_NUM_THREADS'; default to 1 to avoid oversubscription under multiprocessing.
+    os.environ["NUMBA_NUM_THREADS"] = os.environ.get("GEF_NUMBA_NUM_THREADS", "1")
+
+# Prefer TBB threading layer on ARM if not specified by the environment
+if "NUMBA_THREADING_LAYER" not in os.environ:
+    config.THREADING_LAYER = "tbb"
 
 
 # Enable fast math for additional speedup (if numerical precision allows)

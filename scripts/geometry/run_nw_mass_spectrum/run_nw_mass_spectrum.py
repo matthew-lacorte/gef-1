@@ -235,8 +235,17 @@ class MassSpectrumAnalyzer:
         else:
             num_cores = max(1, min(2, multiprocessing.cpu_count() - 1))
         
+        # Configure per-process Numba threads via environment so children inherit it
+        threads_per_proc = int(self.config.get('threads_per_process', 0))
+        if threads_per_proc > 0:
+            os.environ['NUMBA_NUM_THREADS'] = str(threads_per_proc)
+            os.environ['GEF_NUMBA_NUM_THREADS'] = str(threads_per_proc)
+        threading_layer = str(self.config.get('numba_threading_layer', '') or '').strip()
+        if threading_layer:
+            os.environ['NUMBA_THREADING_LAYER'] = threading_layer
+
         self.logger.info(f"Running simulations for N_w values: {nw_values}")
-        self.logger.info(f"Using {num_cores} parallel processes")
+        self.logger.info(f"Using {num_cores} parallel processes; NUMBA_NUM_THREADS={os.environ.get('NUMBA_NUM_THREADS','')} layer={os.environ.get('NUMBA_THREADING_LAYER','')} ")
         
         # Run simulations in parallel
         with multiprocessing.Pool(processes=num_cores) as pool:
@@ -316,36 +325,95 @@ class MassSpectrumPlotter:
         """
         plt.style.use('seaborn-v0_8-whitegrid')
         fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # Plot stable states
-        stable_df = results_df.dropna(subset=['mass'])
+
+        # Axis normalization / padding options (compute BEFORE plotting)
+        plotting_cfg = self.config.get('plotting', {}) or {}
+        normalize_y = bool(plotting_cfg.get('normalize_y', False))
+        x_pad_frac = float(plotting_cfg.get('x_pad_frac', 0.1))
+        y_pad_frac = float(plotting_cfg.get('y_pad_frac', 0.1))
+
+        nw_values = list(self.config['nw_sweep_range'])
+        x_min, x_max = float(min(nw_values)), float(max(nw_values))
+        x_span = x_max - x_min
+        if x_span <= 0:
+            x_pad = 1.0
+        else:
+            x_pad = max(1e-3, x_pad_frac * x_span)
+
+        # Prepare data for plotting with optional normalization
+        base_stable_df = results_df.dropna(subset=['mass'])
+        stable_masses = base_stable_df['mass'].values if not base_stable_df.empty else np.array([0.0])
+        m_min = float(np.nanmin(stable_masses)) if stable_masses.size > 0 else 0.0
+        m_max = float(np.nanmax(stable_masses)) if stable_masses.size > 0 else 1.0
+        m_span = m_max - m_min
+        if normalize_y and stable_masses.size > 0 and m_span > 0:
+            def norm(m):
+                return (m - m_min) / m_span
+            plot_df = results_df.copy()
+            plot_df['mass'] = plot_df['mass'].apply(lambda v: norm(v) if np.isfinite(v) else np.nan)
+            y_label = 'Normalized Emergent Mass (unitless)'
+        else:
+            plot_df = results_df
+            y_label = 'Emergent Mass (E_final - E_vacuum)'
+
+        # Split after potential normalization
+        stable_df = plot_df.dropna(subset=['mass'])
+        unstable_df = plot_df[plot_df['mass'].isna()]
+
+        if stable_masses.size > 0:
+            y_vals = stable_df['mass'].values if not stable_df.empty else np.array([0.0])
+            y_min = float(np.nanmin(y_vals))
+            y_max = float(np.nanmax(y_vals))
+        else:
+            y_min, y_max = 0.0, 1.0
+        y_span = y_max - y_min
+        y_pad = max(1e-6, y_pad_frac * (y_span if y_span > 0 else 1.0))
+
+        # In MassSpectrumPlotter, after you calculate y_min and y_pad
+        y_bottom = y_min - y_pad
+
+        if not unstable_df.empty:
+            ax.scatter(
+                unstable_df['winding_number'],
+                # Plot them at the very bottom of the chart for clarity
+                [y_bottom] * len(unstable_df), 
+                marker='x',
+                color='red',
+                s=100,
+                label='Unstable/Non-Converged',
+                zorder=5
+            )
+
+        # Apply padded limits to avoid smushed plots
+        ax.set_xlim(x_min - x_pad, x_max + x_pad)
+        ax.set_ylim(y_min - y_pad, y_max + y_pad)
+
+        # Now plot points/lines using prepared data
         if not stable_df.empty:
             ax.plot(
-                stable_df['winding_number'], 
-                stable_df['mass'], 
-                'o-', 
-                color='blue', 
+                stable_df['winding_number'],
+                stable_df['mass'],
+                'o-',
+                color='blue',
                 linewidth=2,
                 markersize=8,
                 label='Stable States'
             )
-        
-        # Plot unstable states
-        unstable_df = results_df[results_df['mass'].isna()]
+
         if not unstable_df.empty:
             ax.scatter(
-                unstable_df['winding_number'], 
-                np.zeros_like(unstable_df['winding_number']), 
-                marker='x', 
-                color='red', 
-                s=100, 
+                unstable_df['winding_number'],
+                np.zeros_like(unstable_df['winding_number']),
+                marker='x',
+                color='red',
+                s=100,
                 label='Unstable/Non-Converged',
                 zorder=5
             )
-        
+
         # Formatting
         ax.set_xlabel('Topological Winding Number (N_w)', fontsize=12)
-        ax.set_ylabel('Emergent Mass (E_final - E_vacuum)', fontsize=12)
+        ax.set_ylabel(y_label, fontsize=12)
         
         particle_type = self.config.get('particle_type', 'Unknown')
         ax.set_title(f'GEF Mass Spectrum: {particle_type} Particles', fontsize=14)
@@ -355,6 +423,9 @@ class MassSpectrumPlotter:
         for item in observed:
             try:
                 y = float(item.get('mass'))
+                # Normalize observed overlay if plot is normalized
+                if normalize_y and m_span > 0:
+                    y = (y - m_min) / m_span
                 label = str(item.get('label', 'Observed'))
                 ax.axhline(y=y, color='gray', linestyle=':', linewidth=1.2, alpha=0.8)
                 ax.text(
@@ -377,9 +448,12 @@ class MassSpectrumPlotter:
         ax.legend(fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         
-        # Set x-ticks to winding numbers
-        nw_values = self.config['nw_sweep_range']
-        ax.set_xticks(nw_values)
+        # Set x-ticks to winding numbers (cap to avoid overcrowding)
+        if len(nw_values) <= 12:
+            ax.set_xticks(nw_values)
+        else:
+            from matplotlib.ticker import MaxNLocator
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=12, integer=True))
         
         # Save plot
         plot_path = output_dir / 'mass_vs_nw_spectrum.png'
