@@ -1,0 +1,97 @@
+# Master Configuration for the GEF Lepton Mass Hierarchy Calibration
+
+# --- Experiment Metadata ---
+particle_type: "CalibratedLeptonFamily"
+output_dir: "data/sim_outputs/calibration_runs/"
+
+# --- Calibration Target: The Ground Truth from Our Universe ---
+calibration_target:
+  electron_mass_MeV: 0.511
+  muon_mass_MeV: 105.66
+  tau_mass_MeV: 1776.86
+  
+  # The optimizer will target these precise ratios
+  muon_to_electron_mass_ratio: 206.77 
+  tau_to_electron_mass_ratio: 3477.2
+
+# --- Fixed Physical Parameters of the GEF Lagrangian ---
+# These are the "laws of nature" we are assuming for this run.
+# They are anchored by other parts of the GEF theory.
+mu_squared: 1.0
+lambda_val: 1.152  # Anchored by the fine-structure constant prediction
+P_env: 0.01
+h_squared: 0.0     # No self-interaction for single leptons
+
+# --- Optimization Parameters: The "Dials" to be Tuned ---
+optimization_params:
+  max_iterations: 50 # How many attempts the optimizer gets
+  
+  # This list defines the parameters the optimizer can change, their order,
+  # initial guess, and allowed range (bounds).
+  parameters: [muon_amplitude, muon_sigma, tau_amplitude, tau_sigma]
+  
+  parameter_info:
+    - name: "muon_amplitude"
+      initial: -2.5
+      min: -10.0
+      max: -0.1
+    - name: "muon_sigma"
+      initial: 5.0
+      min: 0.5
+      max: 20.0
+    - name: "tau_amplitude"
+      initial: -1.0
+      min: -10.0
+      max: -0.1
+    - name: "tau_sigma"
+      initial: 20.0
+      min: 1.0
+      max: 100.0
+
+# --- Resonance Model (Structure) ---
+# The optimizer will fill in the 'amplitude' and 'sigma' values.
+resonance_parameters:
+  g_base_squared: 0.1
+  peaks:
+    - center: 206.77  # Center the peak on the target ratio
+      amplitude: -2.5 # This is the initial guess
+      sigma: 5.0      # This is the initial guess
+    - center: 3477.2  # Center the peak on the target ratio
+      amplitude: -1.0 # This is the initial guess
+      sigma: 20.0     # This is the initial guess
+
+# --- Simulation Grid & Solver Parameters (for each trial run) ---
+lattice_size: [32, 32, 32, 32]
+dx: 0.5
+relaxation_dt: 1.0e-4
+max_iterations: 10000
+convergence_threshold: 1.0e-7
+early_exit_energy_threshold: 1000.0
+friction: 0.95
+vacuum_energy: 0.0 # Should be pre-calculated for these physics params
+
+# --- Sweep Configuration (for each trial run) ---
+# Use a sparse "locator" sweep to be fast during optimization.
+nw_sweep_range:
+  - 1
+  # Sparse scan up to the first peak
+  - 100
+  - 150
+  # Dense scan around the muon peak
+  - 200
+  - 205
+  - 207
+  - 210
+  - 215
+  # Sparse scan between peaks
+  - 1000
+  - 2000
+  - 3000
+  # Dense scan around the tau peak
+  - 3400
+  - 3450
+  - 3477
+  - 3500
+  - 3550
+  # A final point to ensure the sea level
+  - 4000

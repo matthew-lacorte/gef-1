@@ -181,16 +181,22 @@ class SimulationWorker:
 class MassSpectrumAnalyzer:
     """Main class for running mass spectrum analysis."""
     
-    def __init__(self, config_path: str):
+    def __init__(self, config_or_path):
         """
         Initialize the analyzer with configuration.
         
         Args:
-            config_path: Path to YAML configuration file
+            config_or_path: Either a path to a YAML config file, or a dict config
         """
-        self.config_path = Path(config_path)
-        self.config = self._load_and_validate_config()
         self.logger = setup_logger(__name__)
+
+        # Accept either a dict or a path-like
+        if isinstance(config_or_path, dict):
+            self.config_path = None
+            self.config = config_or_path
+        else:
+            self.config_path = Path(config_or_path)
+            self.config = self._load_and_validate_config()
         
         # Setup output directory
         self.output_dir = self._setup_output_directory()
