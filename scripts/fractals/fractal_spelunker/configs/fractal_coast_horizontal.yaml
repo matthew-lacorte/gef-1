@@ -40,27 +40,27 @@ sweep_parameters:
 
 # --- Simulation & Render Quality ---
 image_size: 8192       # Reduced for testing - increase to 4096 for production
-max_iterations: 12000
+max_iterations: 2400
 fractal_window: [0.38, 1.12, .9, 1.3] # (Xmin, Xmax, Ymin, Ymax)
 
 # Parameters for 'orbit' mode
 orbit_render:
-  num_points: 2000
+  num_points: 4000
   transient_skip: 200
   resolution: 2048
 
 # --- Output & Plotting ---
 output_dir: '/Volumes/VFX/GEF/data/analysis/fractal_spelunker'
 plotting:
-  animation_figsize: [16, 16]
+  animation_figsize: [12, 12]
   cmap: 'magma'
     # 'hot' is also fun
-  dpi: 300
+  dpi: 1200
 
 # --- Analysis Options ---
 analysis:
   # Generate difference images between consecutive frames
-  generate_diff_frames: false
+  generate_diff_frames: true
   diff_cmap: 'coolwarm'         # Colormap for difference images
   diff_vmin: -5                 # Min value for difference colormap
   diff_vmax: 5                  # Max value for difference colormap

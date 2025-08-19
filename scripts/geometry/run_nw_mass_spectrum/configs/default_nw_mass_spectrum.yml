@@ -1,0 +1,61 @@
+# Configuration for a GEF Mass Spectrum Sweep using the HopfionRelaxer Engine
+
+# --- Experiment Metadata ---
+particle_type: "LeptonFamily" # Human-readable name for this run series
+output_dir: "data/sim_outputs/mass_spectrum/" # Base directory for results
+
+# --- Physical Parameters of the GEF Lagrangian ---
+# These define the "laws of physics" for this simulation run.
+# They are direct inputs to the HopfionRelaxer.
+mu_squared: 1.0          # (μ²) Sets the scale of symmetry breaking in the Mexican-hat potential.
+lambda_val: 2.0          # (λ) The quartic self-coupling constant of the Φ-field.
+P_env: 0.01              # (P_env) External environmental pressure, helps confine the soliton.
+h_squared: 0.0           # (h²) Hook coupling. Set to 0 for single-particle stability tests.
+
+# --- Resonance Model for the Internal Stabilizer (g²) ---
+# This is the core of the "Generational Resonance" hypothesis.
+# The effective g_squared is NOT a constant, but a function of N_w.
+resonance_parameters:
+  g_base_squared: 0.1    # A small, baseline stability factor for all N_w.
+  
+  # A list of resonance peaks. Each peak represents a potentially stable generation.
+  peaks:
+    - center: 1          # Centered on N_w = 1 (First Generation)
+      amplitude: 5.0     # The strength of the stability resonance.
+      sigma: 0.2         # The width of the resonance.
+      
+    - center: 207        # Hypothetical center for N_w ~ Muon/Electron mass ratio
+      amplitude: 2.5     # A weaker resonance for the second generation.
+      sigma: 5.0         # A broader resonance.
+      
+    - center: 3477       # Hypothetical center for N_w ~ Tau/Electron mass ratio
+      amplitude: 1.0     # An even weaker resonance for the third generation.
+      sigma: 20.0        # A very broad resonance.
+
+# --- Simulation Grid & Solver Parameters ---
+lattice_size: [32, 32, 32, 32] # (N0, N1, N2, N3) Grid size. Larger is more accurate but slower.
+dx: 0.5                      # Grid spacing.
+
+# Parameters controlling the numerical relaxation process
+relaxation_dt: 1.0e-4        # Initial timestep for the solver.
+max_iterations: 20000        # Maximum number of steps before giving up.
+convergence_threshold: 1.0e-8 # Power dissipation threshold for declaring convergence.
+early_exit_energy_threshold: 100.0 # If total energy explodes past this, assume unstable and stop.
+friction: 0.95               # Friction term for the "heavy ball" solver.
+
+# --- Experiment Sweep Configuration ---
+# Defines the specific values of N_w to test.
+nw_sweep_range:
+  - 1
+  - 2
+  - 10
+  - 100
+  - 200
+  - 207 # Test directly on the resonance peak
+  - 215
+  # ... Add more points to scan the spectrum ...
+  - 3477
+
+# The energy of the vacuum state (Φ=1 everywhere) for this grid and parameter set.
+# This must be pre-calculated or set to a known value for mass calculation.
+vacuum_energy: 0.0 
