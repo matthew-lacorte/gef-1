@@ -4,7 +4,7 @@ HopfionRelaxer: physics-correct relaxation of a 4D real scalar field with
 anisotropic stabilizer and Hook-type gradient coupling.
 
 Key improvements in this refactor:
-- FIXED SIGNS in δU/δφ for gradient-weighted terms (anisotropic + Hook).
+- Ensured physically correct signs for all terms in the potential derivative (δU/δφ).
 - Added lightweight energy backtracking (line-search style) for stability.
 - Parameter sanity checks to keep the vacuum within |φ| ≤ 1 when Hook term is active.
 - Config compatibility for `g_H_squared` ↔ `h_squared`.
