@@ -71,7 +71,18 @@ def analytic_vacuum_energy(config: Dict) -> float:
     """
     mu2 = float(config["mu_squared"])     # μ²
     lam = float(config["lambda_val"])     # λ (>0)
-    P = float(config.get("P_env", 0.0))   # pressure
+    P = float(cfg.get("P_env", 0.0))      # Pressure
+    if cfg["mu_squared"] <= 2.0 * P:
+        phi0 = 0.0
+    else:
+        phi0 = np.sqrt(max(0.0, (cfg["mu_squared"] - 2.0 * P) / cfg["lambda_val"]))
+    test = np.full(solver.lattice_shape, phi0, dtype=np.float64)
+    dU = calculate_full_potential_derivative(test, solver.mu2, solver.lam, solver.g_sq, solver.P_env, solver.h_sq, solver.dx)
+    if not np.allclose(dU, 0.0, atol=1e-12):
+        logger.warning("Uniform vacuum derivative not ~0 (max |δU/δφ|=%.3e). Check signs.", np.abs(dU).max())
+    else:
+        logger.info("Uniform vacuum derivative ~0 (max |δU/δφ|=%.3e).", np.abs(dU).max())
+        
     dx = float(config["dx"])              # lattice spacing
     n0, n1, n2, n3 = map(int, config["lattice_size"])  # type: ignore
     ncells = n0 * n1 * n2 * n3
@@ -173,14 +184,10 @@ class SimulationWorker:
             
             solver.initialize_field(nw=nw)
 
-            n_skip = int(base_config.get("relaxation_n_skip", 1000))
-            n_iter = int(base_config.get("relaxation_n_iter", 1024))
             record_series = bool(base_config.get("record_series", False))
 
             t0 = _dt.datetime.now()
-            _, final_energy = solver.run_relaxation(
-                n_skip=n_skip, n_iter=n_iter, record_series=record_series
-            )
+            _, final_energy = solver.run_relaxation(record_series=record_series)
             dt = (_dt.datetime.now() - t0).total_seconds()
 
             converged = bool(np.isfinite(final_energy))

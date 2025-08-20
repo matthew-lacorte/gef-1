@@ -3,7 +3,8 @@ particle_type: "LeptonFamily"
 output_dir: "data/sim_outputs/mass_spectrum/"
 
 # --- Physical Parameters of the GEF Lagrangian ---
-# NOTE: These parameters result in a symmetric vacuum at phi=0 because mu_squared <= 2*P_env.
+# NOTE: These parameters result in a broken-symmetry vacuum since mu_squared > 2*P_env.
+# φ0^2 = (μ² - 2P)/λ = 0.25 ⇒ |φ0| = 0.5.
 # This is a valid physical regime, but not a broken-symmetry "Mexican Hat" phase.
 mu_squared: 1.5
 lambda_val: 2.0
@@ -39,6 +40,6 @@ friction: 0.80
 
 # --- Experiment Sweep Configuration ---
 processes: 6
-relaxation_n_skip: 500
-relaxation_n_iter: 1024
+relaxation_n_skip: 500  # Unecessary?
+relaxation_n_iter: 1024 # Unecessary?
 nw_sweep_range: [1, 100, 207, 500, 1000, 3000, 3477, 4000, 5000]

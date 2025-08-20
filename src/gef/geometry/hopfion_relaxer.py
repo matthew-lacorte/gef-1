@@ -1,4 +1,4 @@
-# src/gef/physics_core/solvers/hopfion_relaxer.py (refactored)
+# src/gef/geometry/hopfion_relaxer.py
 """
 HopfionRelaxer: physics-correct relaxation of a 4D real scalar field with
 anisotropic stabilizer and Hook-type gradient coupling.
@@ -110,10 +110,11 @@ def calculate_full_potential_derivative(
     U_hook    = ½ h² (1-φ²) [ (∂_x φ)² + (∂_y φ)² ]
 
     Resulting Euler–Lagrange derivative (δU/δφ):
-      δU_iso/δφ   = -μ²φ + λφ³
-      δU_P/δφ     = +2Pφ
-      δU_aniso/δφ = -2 g² φ (1-φ²) (∂_w φ)² - g² (1-φ²)² ∂²_w φ
-      δU_hook/δφ  = -h² φ [ (∂_x φ)² + (∂_y φ)² ] - h² (1-φ²) (∂²_x φ + ∂²_y φ)
+
+    δU_iso/δφ   = -μ² φ + λ φ³
+    δU_P/δφ     = +2 P φ
+    δU_aniso/δφ = - g² (1-φ²)² ∂²_w φ + 2 g² φ (1-φ²) (∂_w φ)²
+    δU_hook/δφ  = - h² (1-φ²) (∂²_x φ + ∂²_y φ) + h² φ [ (∂_x φ)² + (∂_y φ)² ]
     """
     result = np.zeros_like(phi)
     inv_2dx = 0.5 / dx
