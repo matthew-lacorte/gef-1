@@ -67,40 +67,7 @@ def _get_logger() -> logging.Logger:
 
 logger = _get_logger()
 
-# --- MassSpectrumAnalyzer resolution (package import, then sibling dynamic) ---
-def _resolve_mass_spectrum_analyzer():
-    try:
-        from experiments.scripts.run_nw_mass_spectrum import MassSpectrumAnalyzer  # type: ignore
-        logger.debug("Imported MassSpectrumAnalyzer from experiments.scripts.*")
-        return MassSpectrumAnalyzer
-    except Exception:
-        pass
-    try:
-        from gef.experiments.scripts.run_nw_mass_spectrum import MassSpectrumAnalyzer  # type: ignore
-        logger.debug("Imported MassSpectrumAnalyzer from gef.experiments.scripts.*")
-        return MassSpectrumAnalyzer
-    except Exception:
-        pass
-
-    # Dynamic sibling import
-    try:
-        from importlib.machinery import SourceFileLoader
-        from importlib.util import spec_from_loader, module_from_spec
-
-        sibling = (Path(__file__).resolve().parent / "run_nw_mass_spectrum.py").resolve()
-        loader = SourceFileLoader("nw_mass_runner", str(sibling))
-        spec = spec_from_loader(loader.name, loader)
-        module = module_from_spec(spec)
-        loader.exec_module(module)  # type: ignore[attr-defined]
-        logger.debug("Dynamically loaded MassSpectrumAnalyzer from sibling file.")
-        return module.MassSpectrumAnalyzer  # type: ignore[attr-defined]
-    except Exception as e:
-        raise ImportError(
-            "Unable to import MassSpectrumAnalyzer from known locations."
-        ) from e
-
-
-MassSpectrumAnalyzer = _resolve_mass_spectrum_analyzer()
+import subprocess
 
 # ---------- Helpers for config parameter mapping ----------
 
@@ -287,36 +254,59 @@ def _apply_params_to_config(cfg: dict, specs: List[ParamSpec], values: np.ndarra
                 logger.debug(f"No mapping rule for '{spec.name}'. Consider providing 'config_path' in parameter_info.")
 
 
-def _run_analyzer(temp_cfg: dict):
+def _run_analyzer(temp_cfg: dict) -> Tuple[pd.DataFrame, Path, Path]:
     """
-    Run a high-level analysis (preferred) or, if unavailable,
-    run parallel simulations then save results.
-    Returns (results_df, csv_path_or_None, money_plot_path_or_None).
+    Writes a temporary config and runs the modular analysis script in a
+    separate process. This is crucial for avoiding multiprocessing issues
+    with Numba in the main optimization loop.
+
+    Returns:
+        A tuple of (results_dataframe, csv_path, plot_path).
     """
-    analyzer = MassSpectrumAnalyzer(temp_cfg)
+    # Define a unique path for the temporary config for this run
+    temp_dir = Path(temp_cfg["output_dir"])
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_config_path = temp_dir / "_temp_run_config.yml"
 
-    # Prefer a "full" analysis if provided by your Analyzer
-    if hasattr(analyzer, "run_full_analysis"):
-        out = analyzer.run_full_analysis()
-        # Expecting tuple: (df, maybe_figs, maybe_plot_path)
-        if isinstance(out, tuple) and len(out) >= 1:
-            df = out[0]
-            money_plot = out[2] if len(out) >= 3 else None
-        else:
-            raise RuntimeError("run_full_analysis returned unexpected structure.")
-        csv_path = None
-        # Save if requested and supported
-        if not temp_cfg.get("skip_save", True) and hasattr(analyzer, "save_results"):
-            csv_path = analyzer.save_results(df)
-        return df, csv_path, money_plot
+    with open(temp_config_path, "w") as f:
+        yaml.dump(temp_cfg, f)
 
-    # Fallback path: run the lower-level simulation
-    df = analyzer.run_parallel_simulations()
-    csv_path = None
-    if not temp_cfg.get("skip_save", True) and hasattr(analyzer, "save_results"):
-        csv_path = analyzer.save_results(df)
-    # Ensure tuple signature is consistent
-    return df, csv_path, None
+    # Get the path to the new, modular runner script
+    script_path = Path(__file__).parent / "run_analysis.py"
+    # Use a more robust method for invoking python
+    cmd = ["/usr/bin/env", "python3", str(script_path), str(temp_config_path)]
+
+    logger.info(f"Using python executable: /usr/bin/env python3")
+    logger.info(f"Running command: {' '.join(cmd)}")
+
+    try:
+        # Run the script as a separate process.
+        # capture_output=True and text=True help with debugging if needed.
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=1800)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        logger.error(f"Subprocess analysis failed for {temp_config_path}")
+        logger.error(f"STDOUT:\n{e.stdout}")
+        logger.error(f"STDERR:\n{e.stderr}")
+        raise e
+
+    # The analysis script creates its own timestamped output directory inside
+    # the one we specified. We need to find it to retrieve the results.
+    # It will be the most recently created directory.
+    sub_dirs = [d for d in temp_dir.iterdir() if d.is_dir()]
+    if not sub_dirs:
+        raise FileNotFoundError(f"No output subdirectory found in {temp_dir}")
+
+    # Sort by creation time to find the newest one
+    latest_output_dir = max(sub_dirs, key=os.path.getmtime)
+
+    csv_path = latest_output_dir / 'mass_spectrum_results.csv'
+    plot_path = latest_output_dir / 'mass_vs_nw_spectrum.png'
+
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Result CSV not found at {csv_path}")
+
+    results_df = pd.read_csv(csv_path)
+    return results_df, csv_path, plot_path
 
 
 def _objective(params: np.ndarray, ctx: ObjectiveContext) -> float:
