@@ -5,9 +5,9 @@ output_dir: "data/sim_outputs/mass_spectrum/"
 # --- Physical Parameters of the GEF Lagrangian ---
 # NOTE: These parameters result in a symmetric vacuum at phi=0 because mu_squared <= 2*P_env.
 # This is a valid physical regime, but not a broken-symmetry "Mexican Hat" phase.
-mu_squared: 1.0
+mu_squared: 1.5
 lambda_val: 2.0
-P_env: 0.5
+P_env: 0.5    # -> φ0^2 = (1.5-1.0)/2.0 = 0.25, so φ0 = 0.5
 h_squared: 0.0 # Hook term is disabled
 
 # --- Resonance Model ---

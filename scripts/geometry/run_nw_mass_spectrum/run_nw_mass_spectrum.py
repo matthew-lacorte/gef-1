@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     try:
-        from gef.physics_core.solvers.hopfion_relaxer import HopfionRelaxer
+        from gef.geometry.hopfion_relaxer import HopfionRelaxer
         from gef.core.logging import logger
     except Exception:  # Last resort fallback
         from hopfion_relaxer import HopfionRelaxer  # type: ignore
