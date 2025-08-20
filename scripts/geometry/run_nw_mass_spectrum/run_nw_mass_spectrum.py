@@ -32,17 +32,17 @@ import yaml
 
 # --- Robust Package Imports ---
 try:
-    from gef.geometry.hopfion_relaxer import HopfionRelaxer
+    from gef.geometry.hopfion_relaxer import HopfionRelaxer, calculate_full_potential_derivative
     from gef.core.logging import logger
 except Exception:  # pragma: no cover
     project_root = Path(__file__).resolve().parent.parent.parent
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     try:
-        from gef.geometry.hopfion_relaxer import HopfionRelaxer
+        from gef.geometry.hopfion_relaxer import HopfionRelaxer, calculate_full_potential_derivative
         from gef.core.logging import logger
     except Exception:  # Last resort fallback
-        from hopfion_relaxer import HopfionRelaxer  # type: ignore
+        from hopfion_relaxer import HopfionRelaxer, calculate_full_potential_derivative  # type: ignore
         logger = logging.getLogger(__name__)
         if not logger.handlers:
             _h = logging.StreamHandler()
@@ -156,13 +156,21 @@ class SimulationWorker:
 
         g_eff_sq = ResonanceModel.calculate_g_eff_squared(nw, rp, logger)
         if not quiet:
-            logger.info("Starting N_w=%s with g_eff²=%.6g", nw, g_eff_sq)
+            logger.info(f"Starting N_w={nw} with g_eff²={g_eff_sq:.6g}")
 
         cfg = dict(base_config)
         cfg["g_squared"] = float(g_eff_sq)  # pass effective anisotropy to solver
 
         try:
             solver = HopfionRelaxer(cfg)
+            
+            # Quick uniform-vacuum check (gradient terms must vanish)
+            phi0 = 0.0 if cfg["mu_squared"] <= 2.0*cfg.get("P_env",0.0) else np.sqrt(max(0.0,(cfg["mu_squared"]-2.0*cfg.get("P_env",0.0))/cfg["lambda_val"]))
+            test = np.full(solver.lattice_shape, phi0, dtype=np.float64)
+            dU = calculate_full_potential_derivative(test, solver.mu2, solver.lam, solver.g_sq, solver.P_env, solver.h_sq, solver.dx)
+            if not np.allclose(dU, 0.0, atol=1e-12):
+                logger.warning(f"Uniform vacuum derivative not ~0 (max |δU/δφ|={np.abs(dU).max():.3e}). Check signs.")
+            
             solver.initialize_field(nw=nw)
 
             n_skip = int(base_config.get("relaxation_n_skip", 1000))
@@ -178,13 +186,13 @@ class SimulationWorker:
             converged = bool(np.isfinite(final_energy))
             status = "converged" if converged else "FAILED"
             if not quiet:
-                logger.info("Finished N_w=%s in %.2fs; E_final=%s (%s)", nw, dt, f"{final_energy:.6g}" if converged else "nan", status)
+                logger.info(f"Finished N_w={nw} in {dt:.2f}s; E_final={final_energy:.6g} ({'converged' if converged else 'FAILED'})")
 
             if not converged:
                 final_energy = np.nan
 
         except Exception:  # pragma: no cover
-            logger.exception("CRITICAL ERROR in simulation for N_w=%s", nw)
+            logger.exception(f"CRITICAL ERROR in simulation for N_w={nw}")
             final_energy = np.nan
             converged = False
 
@@ -222,7 +230,7 @@ class MassSpectrumAnalyzer:
             try:
                 self.vacuum_energy = analytic_vacuum_energy(self.config)
                 if not self.quiet:
-                    self.logger.info("Analytic vacuum energy: %s", f"{self.vacuum_energy:.6g}")
+                    self.logger.info(f"Analytic vacuum energy: {self.vacuum_energy:.6g}")
             except Exception:
                 self.logger.exception("Failed computing analytic vacuum energy; defaulting to 0.0")
                 self.vacuum_energy = 0.0
@@ -241,7 +249,7 @@ class MassSpectrumAnalyzer:
         out = root / f"nw_spectrum_{particle_type}_{ts}"
         out.mkdir(parents=True, exist_ok=True)
         if not self.config.get("quiet", False):
-            self.logger.info("Output directory: %s", out)
+            self.logger.info(f"Output directory: {out}")
         return out
 
     # ------------------------ Simulation runner ------------------------ #
@@ -261,8 +269,8 @@ class MassSpectrumAnalyzer:
         os.environ["NUMBA_NUM_THREADS"] = str(threads_per_proc)
 
         if not self.quiet:
-            self.logger.info("N_w sweep (%d values): %s", len(nw_values), nw_values)
-            self.logger.info("Using %d process(es) × %d Numba thread(s)", num_procs, threads_per_proc)
+            self.logger.info(f"N_w sweep ({len(nw_values)} values): {nw_values}")
+            self.logger.info(f"Using {num_procs} process(es) × {threads_per_proc} Numba thread(s)")
 
         worker_func = partial(SimulationWorker.run_single_simulation, base_config=self.config)
 
@@ -277,6 +285,16 @@ class MassSpectrumAnalyzer:
         df["vacuum_energy"] = self.vacuum_energy
         # Mass is E_final - E_vac; keep NaN for non-converged
         df["mass"] = df["final_energy"] - self.vacuum_energy
+        
+        # Safety check: negative masses indicate sign errors in δU/δφ
+        tol = 1e-10
+        neg_mask = (df["mass"].notna()) & (df["mass"] < -tol)
+        if neg_mask.any():
+            self.logger.error(
+                f"Negative masses detected (min={df.loc[neg_mask, 'mass'].min():.3e}). "
+                "This usually means δU/δφ signs don't match the energy. Re-check the solver."
+            )
+        
         return df
 
     # ----------------------------- Saving ------------------------------ #
@@ -284,9 +302,9 @@ class MassSpectrumAnalyzer:
         csv_path = self.output_dir / "mass_spectrum_results.csv"
         results_df.to_csv(csv_path, index=False)
         if not self.quiet:
-            self.logger.info("Saved results: %s", csv_path)
+            self.logger.info(f"Saved results: {csv_path}")
             with pd.option_context("display.max_rows", None, "display.max_columns", None):
-                self.logger.info("Results summary:\n%s", results_df.to_string(index=False))
+                self.logger.info(f"Results summary:\n{results_df.to_string(index=False)}")
         return csv_path
 
     # ----------------------------- Plotting ---------------------------- #
@@ -299,7 +317,7 @@ class MassSpectrumAnalyzer:
             self.logger.exception("Plot generation failed")
             return None
         if not self.quiet:
-            self.logger.info("Saved plot: %s", path)
+            self.logger.info(f"Saved plot: {path}")
         return path
 
     # ---------------------------- Orchestration ------------------------ #
