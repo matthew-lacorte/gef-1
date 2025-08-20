@@ -6,21 +6,21 @@ metric_mass_scale: 1.0     # increase to emphasize low-mass basins
 energy_check_only: false   # true skips relaxation; uses initial energy only (fast probe)
 
 # Parallelism
-processes: 3
-threads_per_process: 2
+processes: 2
+threads_per_process: 4
 
 # Sweep axes — each maps to a HopfionRelaxer config key
 param1:
   name: mu_squared
   key: mu_squared
-  start: 0.5
+  start: 0
   stop: 2.0
-  num_points: 16
+  num_points: 32
   transform: linear   # or log10
 
 param2:
-  name: g_squared
-  key: g_squared
+  name: p_env
+  key: p_env
   start: 0.0
   stop: 0.5
   num_points: 16
@@ -30,16 +30,16 @@ param2:
 solver:
   lattice_size: [24, 24, 16, 16]
   dx: 0.5
-  mu_squared: 1.0       # overridden by param1
+  mu_squared: 1.5
   lambda_val: 2.0
   P_env: 0.1
-  g_squared: 0.0        # overridden by param2
-  h_squared: 0.0
+  g_squared: 0.2
+  h_squared: 0.1
   seed_nw: 1
   relaxation_dt: 1.0e-5
-  friction: 0.85
+  friction: 0.8
   max_iterations: 8000
-  convergence_threshold: 1.0e-6
+  convergence_threshold: 1.0e-5
   early_exit_energy_threshold: 5.0e3
   relaxation_n_skip: 300
   relaxation_n_iter: 512

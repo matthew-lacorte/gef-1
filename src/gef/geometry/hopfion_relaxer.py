@@ -463,14 +463,25 @@ class HopfionRelaxer:
 
                     current_energy = self.compute_total_energy()
 
-                # Convergence test every ~100 checked steps (power dissipation proxy)
-                if i >= 100 and (i % 100 == 0):
-                    energy_change = abs(current_energy - last_energy)
-                    power_dissipation = energy_change / (self.energy_check_interval * max(self.dt, 1e-30))
-                    if power_dissipation < self.convergence_threshold:
-                        converged = True
-                        last_energy = current_energy
-                        break
+                rel_drop = abs(current_energy - last_energy) / max(abs(current_energy), 1.0)
+                max_update = float(np.max(np.abs(update_step)))
+
+                rel_tol = float(self.config.get("energy_rel_tol", 1e-5))
+                step_tol = float(self.config.get("max_update_tol", 5e-5))
+                warmup = int(self.config.get("convergence_warmup_iters", 500))
+
+                # Debug log every 50th energy check
+                checks_done = (i // self.energy_check_interval)
+                if checks_done % 50 == 0:
+                    logger.debug(
+                        "it=%d E=%.6f dt=%.3e maxΔφ=%.3e",
+                        i, float(current_energy), float(self.dt), float(max_update)
+                    )
+
+                if i >= warmup and (rel_drop < rel_tol or max_update < step_tol):
+                    converged = True
+                    last_energy = current_energy
+                    break
 
                 last_energy = current_energy
 
@@ -480,3 +491,4 @@ class HopfionRelaxer:
             final_energy = np.nan
 
         return (np.array(phi_series), final_energy) if record_series else (None, final_energy)
+
