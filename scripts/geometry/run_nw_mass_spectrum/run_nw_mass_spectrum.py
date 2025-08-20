@@ -71,17 +71,7 @@ def analytic_vacuum_energy(config: Dict) -> float:
     """
     mu2 = float(config["mu_squared"])     # μ²
     lam = float(config["lambda_val"])     # λ (>0)
-    P = float(cfg.get("P_env", 0.0))      # Pressure
-    if cfg["mu_squared"] <= 2.0 * P:
-        phi0 = 0.0
-    else:
-        phi0 = np.sqrt(max(0.0, (cfg["mu_squared"] - 2.0 * P) / cfg["lambda_val"]))
-    test = np.full(solver.lattice_shape, phi0, dtype=np.float64)
-    dU = calculate_full_potential_derivative(test, solver.mu2, solver.lam, solver.g_sq, solver.P_env, solver.h_sq, solver.dx)
-    if not np.allclose(dU, 0.0, atol=1e-12):
-        logger.warning("Uniform vacuum derivative not ~0 (max |δU/δφ|=%.3e). Check signs.", np.abs(dU).max())
-    else:
-        logger.info("Uniform vacuum derivative ~0 (max |δU/δφ|=%.3e).", np.abs(dU).max())
+    P = float(config.get("P_env", 0.0))   # pressure
         
     dx = float(config["dx"])              # lattice spacing
     n0, n1, n2, n3 = map(int, config["lattice_size"])  # type: ignore
@@ -133,19 +123,19 @@ class ResonanceModel:
             if shape == "lorentzian":
                 gamma = float(peak.get("gamma", peak.get("sigma", 1.0)))
                 if gamma <= 0:
-                    if log: log.warning("Ignoring Lorentzian peak with nonpositive gamma: %s", peak)
+                    if log: log.warning(f"Ignoring Lorentzian peak with nonpositive gamma: {peak}")
                     continue
                 offset += cls._lorentzian(nw, center, amp, gamma)
             else:  # gaussian default
                 sigma = float(peak.get("sigma", 1.0))
                 if sigma <= 0:
-                    if log: log.warning("Ignoring Gaussian peak with nonpositive sigma: %s", peak)
+                    if log: log.warning(f"Ignoring Gaussian peak with nonpositive sigma: {peak}")
                     continue
                 offset += cls._gaussian(nw, center, amp, sigma)
 
         g_eff = g_base_sq + offset
         if g_eff < 0:
-            if log: log.warning("Computed g_eff²=%.4g < 0 for N_w=%s; clamping to 0 (unphysical).", g_eff, nw)
+            if log: log.warning(f"Computed g_eff²={g_eff:.4g} < 0 for N_w={nw}; clamping to 0 (unphysical).")
             g_eff = 0.0
         return g_eff
 
@@ -274,6 +264,7 @@ class MassSpectrumAnalyzer:
         # These env vars are inherited by spawned workers
         os.environ["GEF_NUMBA_NUM_THREADS"] = str(threads_per_proc)
         os.environ["NUMBA_NUM_THREADS"] = str(threads_per_proc)
+        os.environ["OMP_NUM_THREADS"] = str(threads_per_proc)
 
         if not self.quiet:
             self.logger.info(f"N_w sweep ({len(nw_values)} values): {nw_values}")
