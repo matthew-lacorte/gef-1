@@ -328,49 +328,52 @@ class LocalMassSpectrumPlotter:
 
         # Prepare data
         plot_df = results_df.copy()
-        stable_df = plot_df.dropna(subset=["mass"])  # converged
-        unstable_df = plot_df[plot_df["mass"].isna()]  # non-converged
+        stable_df = plot_df.dropna(subset=["mass"])
+        unstable_df = plot_df[plot_df["mass"].isna()]
 
         y_label = "Emergent Mass (E_final − E_vacuum)"
-        if normalize_y and not stable_df.empty:
-            m_min, m_max = stable_df["mass"].min(), stable_df["mass"].max()
-            m_span = m_max - m_min
+        
+        # --- FIX: Capture original mass range BEFORE normalization ---
+        orig_m_min, orig_m_max = (None, None)
+        if not stable_df.empty:
+            orig_m_min = stable_df["mass"].min()
+            orig_m_max = stable_df["mass"].max()
+
+        if normalize_y and orig_m_min is not None and orig_m_max is not None:
+            m_span = orig_m_max - orig_m_min
             if m_span > 1e-12:
+                # Apply normalization to the 'mass' column for plotting
                 plot_df.loc[plot_df["mass"].notna(), "mass"] = (
-                    (plot_df.loc[plot_df["mass"].notna(), "mass"] - m_min) / m_span
+                    (plot_df.loc[plot_df["mass"].notna(), "mass"] - orig_m_min) / m_span
                 )
-                stable_df = plot_df.dropna(subset=["mass"])  # refresh
+                stable_df = plot_df.dropna(subset=["mass"])  # Refresh with normalized values
                 y_label = "Normalized Emergent Mass"
             else:
-                normalize_y = False  # avoid divide by ~0
+                normalize_y = False  # Avoid division by zero if all masses are the same
 
         # Plot stable points
         if not stable_df.empty:
             ax.plot(
                 stable_df["winding_number"],
                 stable_df["mass"],
-                marker="o",
-                linestyle="-",
-                linewidth=2,
-                markersize=7,
+                marker="o", linestyle="-", linewidth=2, markersize=7,
                 label="Stable",
             )
 
-        # Compute y-bottom for unstable marks
+        # Compute y-bottom for unstable marks using the (potentially normalized) data range
         if not stable_df.empty:
             ymin, ymax = stable_df["mass"].min(), stable_df["mass"].max()
             pad = 0.05 * (ymax - ymin if ymax > ymin else 1.0)
             y_bottom = ymin - pad
         else:
-            y_bottom = 0.0
+            y_bottom = -0.05 # Place slightly below zero if no stable points exist
 
         # Plot non-converged as X along a baseline
         if not unstable_df.empty:
             ax.scatter(
                 unstable_df["winding_number"],
                 np.full(len(unstable_df), y_bottom),
-                marker="x",
-                s=90,
+                marker="x", s=90, color="red",
                 label="Unstable / Non-converged",
                 zorder=5,
             )
@@ -379,13 +382,14 @@ class LocalMassSpectrumPlotter:
         ax.set_ylabel(y_label, fontsize=12)
         ax.set_title(f"GEF Mass Spectrum: {self.config.get('particle_type', 'Unknown')}", fontsize=14)
 
-        # Overlays
-        self._add_overlays(ax, stable_df, normalize_y)
+        # Overlays - Pass the original mass range for correct normalization
+        self._add_overlays(ax, normalize_y, orig_m_min, orig_m_max)
 
         # Deduplicate legend labels
         handles, labels = ax.get_legend_handles_labels()
-        uniq = dict(zip(labels, handles))
-        ax.legend(uniq.values(), uniq.keys(), fontsize=11)
+        if labels:
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), fontsize=11)
 
         ax.margins(x=0.05, y=0.08)
         path = output_dir / "mass_vs_nw_spectrum.png"
@@ -393,29 +397,36 @@ class LocalMassSpectrumPlotter:
         plt.close(fig)
         return path
 
-    def _add_overlays(self, ax, stable_df: pd.DataFrame, normalized: bool) -> None:
+    def _add_overlays(self, ax, normalized: bool, orig_m_min: Optional[float], orig_m_max: Optional[float]) -> None:
+        """Adds horizontal (observed mass) and vertical (resonance) lines to the plot."""
         # Observed masses (horizontal lines)
-        m_min = m_max = m_span = None
-        if normalized and not stable_df.empty:
-            m_min, m_max = stable_df["mass"].min(), stable_df["mass"].max()
-            m_span = m_max - m_min
+        m_span = None
+        if normalized and orig_m_min is not None and orig_m_max is not None:
+            m_span = orig_m_max - orig_m_min
+
         for item in self.config.get("observed_masses", []):
-            y = item.get("mass")
+            y_obs = item.get("mass")
             label = item.get("label", "Observed mass")
-            if y is None:
-                continue
+            if y_obs is None: continue
+
+            # --- FIX: Use the original mass range for normalization ---
             if normalized and m_span is not None and m_span > 1e-12:
-                y = (y - m_min) / m_span
-            ax.axhline(y=float(y), linestyle=":", linewidth=1.2, color="gray", label=label)
+                y_plot = (y_obs - orig_m_min) / m_span
+            else:
+                y_plot = y_obs
+            
+            ax.axhline(y=y_plot, linestyle=":", linewidth=1.5, color="gray", alpha=0.8)
+            # Add text label directly on the plot instead of cluttering the legend
+            ax.text(ax.get_xlim()[1], y_plot, f' {label}', color='gray',
+                    ha='left', va='center', fontsize=10)
 
         # Resonance peaks (vertical lines)
         peaks = (self.config.get("resonance_parameters", {}).get("peaks", []) or self.config.get("peaks", []))
         for peak in peaks:
             x = peak.get("center")
-            if x is None:
-                continue
-            ax.axvline(x=float(x), linestyle="--", linewidth=1.0, color="purple", alpha=0.6, label=f"Resonance @ {x}")
-
+            if x is not None:
+                ax.axvline(x=float(x), linestyle="--", linewidth=1.2, color="purple", alpha=0.6)
+            
 
 # =============================================================================
 # CLI
