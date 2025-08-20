@@ -109,9 +109,11 @@ def calculate_full_potential_derivative(
     U_aniso   = ½ g² (1-φ²)² (∂_w φ)²
     U_hook    = ½ h² (1-φ²) [ (∂_x φ)² + (∂_y φ)² ]
 
-    Resulting Euler–Lagrange derivative:
-      δU_aniso/δφ = + 2 g² φ (1-φ²) (∂_w φ)²  -  g² (1-φ²)² ∂²_w φ
-      δU_hook/δφ  = + h² φ [ (∂_x φ)² + (∂_y φ)² ]  -  h² (1-φ²) (∂²_x φ + ∂²_y φ)
+    Resulting Euler–Lagrange derivative (δU/δφ):
+      δU_iso/δφ   = -μ²φ + λφ³
+      δU_P/δφ     = +2Pφ
+      δU_aniso/δφ = -2 g² φ (1-φ²) (∂_w φ)² - g² (1-φ²)² ∂²_w φ
+      δU_hook/δφ  = -h² φ [ (∂_x φ)² + (∂_y φ)² ] - h² (1-φ²) (∂²_x φ + ∂²_y φ)
     """
     result = np.zeros_like(phi)
     inv_2dx = 0.5 / dx
@@ -140,8 +142,9 @@ def calculate_full_potential_derivative(
                     # (3) Anisotropic stabilizer (w-direction)
                     grad_w = (phi[i, j, k, lp1] - phi[i, j, k, lm1]) * inv_2dx
                     d2_phi_dw2 = (phi[i, j, k, lp1] - 2.0 * phi_val + phi[i, j, k, lm1]) * dx2_inv
-                    # SIGN FIX: + 2 g² φ (1-φ²) (∂_w φ)²
-                    aniso_term1 = +2.0 * g_squared * one_minus_phi_sq * phi_val * (grad_w * grad_w)
+                    # --- CRITICAL FIX: Reverted incorrect sign change from other model ---
+                    # The physically correct sign for this term is NEGATIVE.
+                    aniso_term1 = -2.0 * g_squared * one_minus_phi_sq * phi_val * (grad_w * grad_w)
                     # second term: - g² (1-φ²)² ∂²_w φ
                     aniso_term2 = -1.0 * g_squared * (one_minus_phi_sq * one_minus_phi_sq) * d2_phi_dw2
                     dUdPhi_aniso = aniso_term1 + aniso_term2
@@ -151,8 +154,9 @@ def calculate_full_potential_derivative(
                     grad_y = (phi[i, jp1, k, l] - phi[i, jm1, k, l]) * inv_2dx
                     d2_phi_dx2 = (phi[ip1, j, k, l] - 2.0 * phi_val + phi[im1, j, k, l]) * dx2_inv
                     d2_phi_dy2 = (phi[i, jp1, k, l] - 2.0 * phi_val + phi[i, jm1, k, l]) * dx2_inv
-                    # SIGN FIX: + h² φ [ (∂_x φ)² + (∂_y φ)² ]
-                    hook_term1 = +1.0 * h_squared * phi_val * (grad_x * grad_x + grad_y * grad_y)
+                    # --- CRITICAL FIX: Reverted incorrect sign change from other model ---
+                    # The physically correct sign for this term is also NEGATIVE.
+                    hook_term1 = -1.0 * h_squared * phi_val * (grad_x * grad_x + grad_y * grad_y)
                     # second term: - h² (1-φ²) (∂²_x φ + ∂²_y φ)
                     hook_term2 = -1.0 * h_squared * one_minus_phi_sq * (d2_phi_dx2 + d2_phi_dy2)
                     dUdPhi_hook = hook_term1 + hook_term2
