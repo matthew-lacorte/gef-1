@@ -1,83 +1,44 @@
-# Configuration for a GEF Mass Spectrum Sweep using the HopfionRelaxer Engine
+# Configuration for a GEF Mass Spectrum Sweep (v2 - Stability Focused)
 
 # --- Experiment Metadata ---
-particle_type: "LeptonFamily" # Human-readable name for this run series
-output_dir: "data/sim_outputs/mass_spectrum/" # Base directory for results
+particle_type: "LeptonFamily"
+output_dir: "data/sim_outputs/mass_spectrum/"
 
 # --- Physical Parameters of the GEF Lagrangian ---
-# These define the "laws of physics" for this simulation run.
-# They are direct inputs to the HopfionRelaxer.
-mu_squared: 1.0          # (μ²) Sets the scale of symmetry breaking in the Mexican-hat potential.
-lambda_val: 2.0          # (λ) The quartic self-coupling constant of the Φ-field.
-P_env: 0.01              # (P_env) External environmental pressure, helps confine the soliton.
-h_squared: 0.0           # (h²) Hook coupling. Set to 0 for single-particle stability tests.
+mu_squared: 1.0
+lambda_val: 2.0
+# --- CRITICAL CHANGE: INCREASED CONFINEMENT ---
+P_env: 0.5               # Was 0.01. Let's increase this by 50x to provide confinement.
+h_squared: 0.0
 
-# --- Resonance Model for the Internal Stabilizer (g²) ---
-# This is the core of the "Generational Resonance" hypothesis.
-# The effective g_squared is NOT a constant, but a function of N_w.
+# --- Resonance Model ---
 resonance_parameters:
-  g_base_squared: 0.1    # A small, baseline stability factor for all N_w.
-  invert_amplitudes: false # If true, inverts the sign of peak amplitudes. For experimental use.
+  g_base_squared: 0.1
+  invert_amplitudes: false
   
-  # A list of resonance peaks. Each peak represents a potentially stable generation.
-  # peaks:
-  #   - center: 1          # Centered on N_w = 1 (First Generation)
-  #     amplitude: 5.0     # The strength of the stability resonance.
-  #     sigma: 0.2         # The width of the resonance.
-      
-  #   - center: 207        # Hypothetical center for N_w ~ Muon/Electron mass ratio
-  #     amplitude: 2.5     # A weaker resonance for the second generation.
-  #     sigma: 5.0         # A broader resonance.
-      
-  #   - center: 3477       # Hypothetical center for N_w ~ Tau/Electron mass ratio
-  #     amplitude: 1.0     # An even weaker resonance for the third generation.
-  #     sigma: 20.0        # A very broad resonance.
-
-peaks:
-  - center: 207
-    amplitude: -2.6 # Make this negative
-    sigma: 2.0
-  - center: 3477
-    amplitude: -1.1 # Make this negative
-    sigma: 10.0
+  # Indented correctly AND with negative amplitudes for stability valleys
+  peaks:
+    - center: 207
+      amplitude: -5.0   # Was -2.6. Let's make the well deeper.
+      sigma: 5.0        # Make the well a bit wider to help catch the particle.
+    - center: 3477
+      amplitude: -2.0   # Was -1.1. Deeper well.
+      sigma: 20.0       # Wider well.
 
 # --- Simulation Grid & Solver Parameters ---
-lattice_size: [32, 32, 32, 32] # (N0, N1, N2, N3) Grid size. Larger is more accurate but slower.
-dx: 0.5                      # Grid spacing.
-
-# Parameters controlling the numerical relaxation process
-relaxation_dt: 1.0e-4        # Initial timestep for the solver.
-max_iterations: 20000        # Maximum number of steps before giving up.
-convergence_threshold: 1.0e-8 # Power dissipation threshold for declaring convergence.
-early_exit_energy_threshold: 100.0 # If total energy explodes past this, assume unstable and stop.
-friction: 0.95               # Friction term for the "heavy ball" solver.
+lattice_size: [32, 32, 32, 32]
+dx: 0.5
+relaxation_dt: 1.0e-4
+max_iterations: 20000
+convergence_threshold: 1.0e-8
+early_exit_energy_threshold: 1000.0 # Increased threshold to allow for settling
+friction: 0.95
 
 # --- Experiment Sweep Configuration ---
-# Defines the specific values of N_w to test.
+processes: 6
+relaxation_n_skip: 500
+relaxation_n_iter: 1024
+# Let's use a simpler, sparser sweep just to see if we get ANY stable points first.
+nw_sweep_range: [1, 100, 207, 500, 1000, 3000, 3477, 4000, 5000]
 
-processes: 6               # or 2
-relaxation_n_skip: 200     # transient steps
-relaxation_n_iter: 256     # measurement steps
-nw_sweep_range: [.5, .94, 1, 1.06, 1.5,  2, 10, 100, 200, 207, 215, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3250, 3400, 3477, 3550, 5000]
-# nw_sweep_range: [1, 2, 10, 100, 180, 185, 190, 195, 200, 205, 207, 210, 215, 220, 225, 230, 240, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3250, 3400, 3405, 3410, 3415, 3420, 3425, 3430, 3435, 3440, 3445, 3450, 3455, 3460, 3465, 3470, 3475, 3477, 3480, 3485, 3490, 3495, 3500, 3505, 3510, 3515, 3520, 3525, 3530, 3535, 3540, 3545, 3550, 3600, 3700, 3800, 3900, 4000, 4250, 4500, 4750, 5000]
-# nw_sweep_range: [1, 5, 10, 20, 40, 60, 80, 100, 120, 140, 160, 180,200, 202, 204, 205, 206, 206.5, 207, 207.5, 208, 209, 210, 212, 214, 216, 218, 220, 240, 260, 280, 300, 320, 340, 360, 380, 400, 420, 440, 460, 480, 500]
-# nw_sweep_range: [205, 205.1, 205.2, 205.3, 205.4, 205.5, 205.6, 205.7, 205.8, 205.9, 206, 206.1, 206.2, 206.3, 206.4, 206.5, 206.6, 206.7, 206.8, 206.9, 207, 207.1, 207.2, 207.3, 207.4, 207.5, 207.6, 207.7, 207.8, 207.9, 208, 208.1, 208.2, 208.3, 208.4, 208.5, 208.6, 208.7, 208.8, 208.9, 209, 209.1, 209.2, 209.3, 209.4, 209.5, 209.6, 209.7, 209.8, 209.9]
-# nw_sweep_range: [206, 206.1, 206.2, 206.3, 206.4, 206.5, 206.525, 206.55, 206.575, 206.6, 206.625, 206.65, 206.675, 206.7, 206.725, 206.75, 206.775, 206.8, 206.825, 206.85, 206.875, 206.9, 206.925, 206.95, 206.975, 207, 207.025, 207.05, 207.075, 207.1, 207.2, 207.3, 207.4, 207.5, 207.6, 207.7, 207.8, 207.9, 208]
-# nw_sweep_range: [3450, 3452, 3454, 3456, 3458, 3460, 3462, 3464, 3466, 3468, 3470, 3472, 3474, 3476, 3478, 3480, 3482, 3484, 3486, 3488, 3490, 3492, 3494, 3496, 3498, 3500, 3502, 3504, 3506, 3508, 3510]
-
-
-# nw_sweep_range:
-#   - 1
-#   - 2
-#   - 10
-#   - 100
-#   - 200
-#   - 207 # Test directly on the resonance peak
-#   - 215
-#   # ... Add more points to scan the spectrum ...
-#   - 3477
-
-# The energy of the vacuum state (Φ=1 everywhere) for this grid and parameter set.
-# This must be pre-calculated or set to a known value for mass calculation.
-vacuum_energy: 0.0 
-
+vacuum_energy: 0.0

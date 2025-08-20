@@ -147,9 +147,10 @@ class SimulationWorker:
         # Accept both structures:
         # 1) resonance_parameters: { g_base_squared, invert_amplitudes, peaks: [...] }
         # 2) resonance_parameters: { g_base_squared, invert_amplitudes }, peaks: [...]
-        resonance_params = dict(base_config.get('resonance_parameters', {}))
-        if 'peaks' not in resonance_params and 'peaks' in base_config:
-            resonance_params['peaks'] = base_config['peaks']
+        resonance_params = base_config.get('resonance_parameters', {})
+        if 'peaks' not in resonance_params:
+            resonance_params['peaks'] = base_config.get('peaks', [])
+            
         g_eff_sq = ResonanceModel.calculate_g_eff_squared(nw, resonance_params)
         
         if not quiet:
