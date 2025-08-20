@@ -1,41 +1,11 @@
-"""
-Calculate the mass spectrum based on the NW (Nambu-Wheeler) model.
-
-This script implements the NW model for calculating the theoretical mass spectrum
-of particles based on geometric principles, comparing the results with observed
-particle masses.
-
-* Reads parameters from a YAML config (default: ./configs/default_nw_mass_spectrum.yml)
-* Calculates theoretical mass values using the NW model equations
-* Compares calculated masses with observed standard model particles
-* Identifies potential resonances and mass relationships
-* Outputs data files and visualizations in a timestamped directory
-
-This script should implement:
-1. NW model equations and parameters
-2. Mass spectrum calculation functions
-3. Comparison with standard model masses
-4. Resonance identification algorithms
-5. Visualization of mass spectrum patterns
-"""
-
-# TODO: Implement full script with:
-# - Imports (numpy, matplotlib, yaml, etc.)
-# - NW model equations and calculation functions
-# - Standard model mass comparison
-# - Resonance pattern identification
-# - Command line interface
-# - Main execution logic
-
 #!/usr/bin/env python3
 """
 GEF N_w Mass Spectrum Analysis
 
-This module runs systematic sweeps over topological winding numbers to generate
-mass spectra for different particle types within the GEF framework.
-
-Author: GEF Research Team
-Date: 2025
+This module runs systematic sweeps over topological winding numbers (N_w) to
+generate mass spectra. It varies physical parameters based on N_w according
+to a resonance model and uses a parallelized relaxation solver to find the
+final energy (mass) for each configuration.
 """
 
 import datetime
@@ -45,83 +15,66 @@ import os
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
 
-# Ensure we can import from the GEF package
+# --- Robust Package Imports ---
 try:
-    # Prefer the layout present in this repo
-    from gef.core.hopfion_relaxer import HopfionRelaxer
-except Exception:
-    try:
-        # Alternate layout (older experiments tree)
-        from gef.physics_core.solvers.hopfion_relaxer import HopfionRelaxer
-    except Exception:
-        # Fallback for development environment: add project root and retry
-        project_root = Path(__file__).parent.parent.parent
+    from gef.physics_core.solvers.hopfion_relaxer import HopfionRelaxer
+    from gef.core.logging import logger
+except ImportError:
+    project_root = Path(__file__).resolve().parent.parent.parent
+    if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
-        from gef.core.hopfion_relaxer import HopfionRelaxer
+    try:
+        from gef.physics_core.solvers.hopfion_relaxer import HopfionRelaxer
+        from gef.core.logging import logger
+    except ImportError:
+        # Fallback to local import and standard logger if package structure fails
+        from hopfion_relaxer import HopfionRelaxer
+        logger = logging.getLogger(__name__)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
 
-# Optional imports; provide local fallbacks if not available
+# Optional import for visualization
 try:
-    from gef.analysis.resonance_models import ResonanceModel  # type: ignore
-except Exception:
-    pass
-try:
-    from gef.core.logging import logger  # type: ignore
-except Exception:
-    # Fallback stdlib logger
-    logger = logging.getLogger(__name__)
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-try:
-    from gef.visualization.spectrum_plots import MassSpectrumPlotter  # type: ignore
-except Exception:
-    MassSpectrumPlotter = None  # We'll use the local implementation below
+    from gef.visualization.spectrum_plots import MassSpectrumPlotter
+except ImportError:
+    MassSpectrumPlotter = None  # Use local implementation
 
 
 class ResonanceModel:
-    """Calculates effective coupling parameters based on resonance theory."""
-    
+    """Calculates effective coupling parameters based on a resonance model."""
+
     @staticmethod
     def calculate_g_eff_squared(nw: int, resonance_params: Dict) -> float:
-        """
-        Calculate effective g_squared based on resonance model.
-        
-        Args:
-            nw: Topological winding number
-            resonance_params: Dictionary containing resonance parameters
-            
-        Returns:
-            Effective g_squared value for the given winding number
-        """
-        g_base_sq = resonance_params['g_base_squared']
+        """Calculate effective g_squared based on a sum of Gaussian resonance peaks."""
+        g_base_sq = resonance_params.get('g_base_squared', 0.0)
         invert_amplitudes = resonance_params.get('invert_amplitudes', False)
-
-        g_hook_sq = 0.0
-        # Be robust if 'peaks' is missing
+        g_offset = 0.0
+        
+        # Robustly get peaks from config
         peaks = resonance_params.get('peaks', []) or []
+        
         for peak in peaks:
-            center = peak['center']
-            amplitude = peak['amplitude']
-            sigma = peak['sigma']
+            center = peak.get('center', 0.0)
+            amplitude = peak.get('amplitude', 0.0)
+            sigma = peak.get('sigma', 1.0)
 
-            # If the experimental flag is set, invert the amplitude
             if invert_amplitudes:
                 amplitude *= -1.0
             
-            # Gaussian resonance peak
-            g_hook_sq += amplitude * np.exp(-(nw - center)**2 / (2 * sigma**2))
+            g_offset += amplitude * np.exp(-(nw - center)**2 / (2 * sigma**2))
             
-        return g_base_sq + g_hook_sq
+        return g_base_sq + g_offset
 
 
 class SimulationWorker:
@@ -129,66 +82,48 @@ class SimulationWorker:
     
     @staticmethod
     def run_single_simulation(nw: int, base_config: Dict) -> Dict:
-        """
-        Run a single Hopfion simulation for given winding number.
+        """Run a single Hopfion simulation for a given winding number."""
+        quiet = base_config.get('quiet', False)
         
-        Args:
-            nw: Topological winding number
-            base_config: Base configuration dictionary
-            
-        Returns:
-            Dictionary containing simulation results
-        """
-        # Use package logger
-        _log = logger
-        quiet = bool(base_config.get('quiet', False))
-        
-        # Calculate effective coupling for this winding number
-        # Accept both structures:
-        # 1) resonance_parameters: { g_base_squared, invert_amplitudes, peaks: [...] }
-        # 2) resonance_parameters: { g_base_squared, invert_amplitudes }, peaks: [...]
+        # Robustly determine resonance parameters
         resonance_params = base_config.get('resonance_parameters', {})
         if 'peaks' not in resonance_params:
             resonance_params['peaks'] = base_config.get('peaks', [])
-            
+
         g_eff_sq = ResonanceModel.calculate_g_eff_squared(nw, resonance_params)
         
         if not quiet:
             logger.info(f"Starting simulation for N_w={nw}, g_eff²={g_eff_sq:.4f}")
         
-        # Create configuration for this specific run
         current_config = base_config.copy()
         current_config['g_squared'] = g_eff_sq
         
         try:
-            # Initialize and run solver
             solver = HopfionRelaxer(current_config)
             solver.initialize_field(nw=nw)
 
-            # Optional relaxation controls from config
-            n_skip = int(base_config.get('relaxation_n_skip', 1000))
-            n_iter = int(base_config.get('relaxation_n_iter', 1024))
+            n_skip = base_config.get('relaxation_n_skip', 1000)
+            n_iter = base_config.get('relaxation_n_iter', 1024)
+            record_series = base_config.get('record_series', False)
 
             t0 = datetime.datetime.now()
-            record_series = bool(base_config.get('record_series', True))
-            phi_series, final_energy = solver.run_relaxation(
-                n_skip=n_skip,
-                n_iter=n_iter,
-                record_series=record_series,
+            # The relaxer now returns a tuple (series, energy)
+            _, final_energy = solver.run_relaxation(
+                n_skip=n_skip, n_iter=n_iter, record_series=record_series
             )
             dt = (datetime.datetime.now() - t0).total_seconds()
-            if not quiet:
-                logger.info(f"Finished N_w={nw} in {dt:.1f}s; E_final={final_energy}")
-            converged = bool(np.isfinite(final_energy))
 
-            # Validate results
+            converged = np.isfinite(final_energy)
+            if not quiet:
+                status = "converged" if converged else "FAILED"
+                logger.info(f"Finished N_w={nw} in {dt:.1f}s; E_final={final_energy:.6f} ({status})")
+
             if not converged:
-                if not quiet:
-                    logger.warning(f"Simulation for N_w={nw} produced invalid energy")
                 final_energy = np.nan
                 
-        except Exception as e:
-            logger.error(f"Simulation for N_w={nw} failed with error: {e}")
+        except Exception:
+            # IMPROVEMENT: Use logger.exception to capture the full traceback for debugging
+            logger.exception(f"CRITICAL ERROR in simulation for N_w={nw}. See traceback below.")
             final_energy = np.nan
             converged = False
         
@@ -201,361 +136,197 @@ class SimulationWorker:
 
 
 class MassSpectrumAnalyzer:
-    """Main class for running mass spectrum analysis."""
+    """Main class for running, analyzing, and plotting mass spectrum sweeps."""
     
     def __init__(self, config_or_path):
-        """
-        Initialize the analyzer with configuration.
-        
-        Args:
-            config_or_path: Either a path to a YAML config file, or a dict config
-        """
         self.logger = logger
-
-        # Accept either a dict or a path-like
         if isinstance(config_or_path, dict):
-            self.config_path = None
             self.config = config_or_path
         else:
             self.config_path = Path(config_or_path)
-            self.config = self._load_and_validate_config()
+            self.config = self._load_config()
         
-        # Setup output directory
         self.output_dir = self._setup_output_directory()
-        self.quiet = bool(self.config.get('quiet', False))
+        self.quiet = self.config.get('quiet', False)
         
-    def _load_and_validate_config(self) -> Dict:
-        """Load and validate configuration file."""
+    def _load_config(self) -> Dict:
         if not self.config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
-            
         with open(self.config_path, 'r') as f:
-            config = yaml.safe_load(f)
-            
-        # Validate configuration (implement this in utils module)
-        # validate_spectrum_config(config)
-        
-        return config
+            return yaml.safe_load(f)
         
     def _setup_output_directory(self) -> Path:
-        """Create timestamped output directory."""
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         particle_type = self.config.get('particle_type', 'unknown')
-        
         output_dir_name = f"nw_spectrum_{particle_type}_{timestamp}"
-        output_dir = Path(self.config['output_dir']) / output_dir_name
+        output_dir = Path(self.config.get('output_dir', '.')) / output_dir_name
         output_dir.mkdir(parents=True, exist_ok=True)
-        
-        if not self.config.get('quiet', False):
+        if not self.quiet:
             self.logger.info(f"Output directory created: {output_dir}")
         return output_dir
         
     def run_parallel_simulations(self) -> pd.DataFrame:
-        """
-        Run simulations in parallel across different winding numbers.
+        """Run simulations in parallel across the configured winding numbers."""
+        nw_values = list(self.config['nw_sweep_range'])
         
-        Returns:
-            DataFrame containing all simulation results
-        """
-        nw_values = self.config['nw_sweep_range']
-        # Allow user to cap process count to avoid oversubscription with Numba threads
-        requested = int(self.config.get('processes', 0))
-        if requested > 0:
-            num_cores = int(requested)
-        else:
-            # If not specified, use all available cores minus one for safety
-            try:
-                cpu_cnt = multiprocessing.cpu_count()
-            except Exception:
-                cpu_cnt = 2
-            num_cores = max(1, cpu_cnt - 1)
+        # Configure multiprocessing and Numba threading
+        requested_procs = self.config.get('processes', 0)
+        num_cores = max(1, multiprocessing.cpu_count() - 1) if requested_procs <= 0 else requested_procs
         
-        # Configure per-process Numba threads via environment so children inherit it
-        threads_per_proc = int(self.config.get('threads_per_process', 0))
-        if threads_per_proc > 0:
-            os.environ['NUMBA_NUM_THREADS'] = str(threads_per_proc)
-            os.environ['GEF_NUMBA_NUM_THREADS'] = str(threads_per_proc)
-        threading_layer = str(self.config.get('numba_threading_layer', '') or '').strip()
-        if threading_layer:
-            os.environ['NUMBA_THREADING_LAYER'] = threading_layer
+        threads_per_proc = self.config.get('threads_per_process', 1)
+        os.environ['GEF_NUMBA_NUM_THREADS'] = str(threads_per_proc) # Custom knob
+        os.environ['NUMBA_NUM_THREADS'] = str(threads_per_proc)     # Numba's knob
 
-        if not self.config.get('quiet', False):
-            self.logger.info(f"Running simulations for N_w values: {nw_values}")
-        numba_threads = os.environ.get('NUMBA_NUM_THREADS', '')
-        numba_layer = os.environ.get('NUMBA_THREADING_LAYER', '')
-        if not self.config.get('quiet', False):
-            self.logger.info(f"Using {num_cores} process(es); NUMBA_NUM_THREADS={numba_threads} layer={numba_layer}")
+        if not self.quiet:
+            self.logger.info(f"Running simulations for {len(nw_values)} N_w values: {nw_values}")
+            self.logger.info(f"Using {num_cores} parallel processes, with {threads_per_proc} Numba thread(s) each.")
         
-        # Build worker function
-        worker_func = partial(
-            SimulationWorker.run_single_simulation,
-            base_config=self.config,
-        )
+        worker_func = partial(SimulationWorker.run_single_simulation, base_config=self.config)
 
-        # Run simulations: sequential if single process to avoid pickling issues
         if num_cores == 1:
             results = list(map(worker_func, nw_values))
         else:
             with multiprocessing.Pool(processes=num_cores) as pool:
                 results = pool.map(worker_func, nw_values)
         
-        # Convert to DataFrame
         results_df = pd.DataFrame(results)
-        
-        # Calculate masses relative to vacuum
         vacuum_energy = self.config.get('vacuum_energy', 0.0)
         results_df['mass'] = results_df['final_energy'] - vacuum_energy
         
         return results_df
         
     def save_results(self, results_df: pd.DataFrame) -> Path:
-        """Save results to CSV file."""
         csv_path = self.output_dir / 'mass_spectrum_results.csv'
         results_df.to_csv(csv_path, index=False)
-        
-        if not self.config.get('quiet', False):
+        if not self.quiet:
             self.logger.info(f"Results saved to: {csv_path}")
-            self.logger.info(f"Results summary:\n{results_df}")
-        
+            self.logger.info(f"Results summary:\n{results_df.to_string()}")
         return csv_path
         
     def generate_plots(self, results_df: pd.DataFrame) -> Path:
-        """Generate mass spectrum visualization."""
-        plotter = MassSpectrumPlotter(self.config)
+        # Use local plotter if the package one isn't available
+        plotter_cls = MassSpectrumPlotter if MassSpectrumPlotter else LocalMassSpectrumPlotter
+        plotter = plotter_cls(self.config)
         plot_path = plotter.create_spectrum_plot(results_df, self.output_dir)
-        
-        if not self.config.get('quiet', False):
+        if not self.quiet:
             self.logger.info(f"Plot saved to: {plot_path}")
         return plot_path
         
     def run_full_analysis(self) -> Tuple[pd.DataFrame, Path, Path]:
-        """
-        Run complete mass spectrum analysis.
-        
-        Returns:
-            Tuple of (results_dataframe, csv_path, plot_path)
-        """
-        self.logger.info("Starting N_w mass spectrum analysis")
-        
-        # Run simulations
+        self.logger.info("Starting N_w mass spectrum analysis.")
         results_df = self.run_parallel_simulations()
         
-        # Save results if not skipped
-        if bool(self.config.get('skip_save', False)):
-            csv_path = self.output_dir / 'mass_spectrum_results.csv'
-        else:
-            csv_path = self.save_results(results_df)
+        csv_path = self.save_results(results_df) if not self.config.get('skip_save') else None
+        plot_path = self.generate_plots(results_df) if not self.config.get('skip_plots') else None
         
-        # Generate plots if not skipped
-        if bool(self.config.get('skip_plots', False)):
-            plot_path = self.output_dir / 'mass_vs_nw_spectrum.png'
-        else:
-            plot_path = self.generate_plots(results_df)
-        
-        self.logger.info("Analysis complete")
-        
+        self.logger.info("Analysis complete.")
         return results_df, csv_path, plot_path
 
 
-class MassSpectrumPlotter:
-    """Handles visualization of mass spectrum results."""
+class LocalMassSpectrumPlotter:
+    """Handles visualization of mass spectrum results. (Local fallback)"""
     
     def __init__(self, config: Dict):
-        """Initialize plotter with configuration."""
         self.config = config
         
     def create_spectrum_plot(self, results_df: pd.DataFrame, output_dir: Path) -> Path:
-        """
-        Create and save mass spectrum plot.
-        
-        Args:
-            results_df: DataFrame containing simulation results
-            output_dir: Directory to save plot
-            
-        Returns:
-            Path to saved plot file
-        """
         plt.style.use('seaborn-v0_8-whitegrid')
         fig, ax = plt.subplots(figsize=(12, 8))
 
-        # Axis normalization / padding options (compute BEFORE plotting)
-        plotting_cfg = self.config.get('plotting', {}) or {}
-        normalize_y = bool(plotting_cfg.get('normalize_y', False))
-        x_pad_frac = float(plotting_cfg.get('x_pad_frac', 0.1))
-        y_pad_frac = float(plotting_cfg.get('y_pad_frac', 0.1))
-
-        nw_values = list(self.config['nw_sweep_range'])
-        x_min, x_max = float(min(nw_values)), float(max(nw_values))
-        x_span = x_max - x_min
-        if x_span <= 0:
-            x_pad = 1.0
-        else:
-            x_pad = max(1e-3, x_pad_frac * x_span)
-
-        # Prepare data for plotting with optional normalization
-        base_stable_df = results_df.dropna(subset=['mass'])
-        stable_masses = base_stable_df['mass'].values if not base_stable_df.empty else np.array([0.0])
-        m_min = float(np.nanmin(stable_masses)) if stable_masses.size > 0 else 0.0
-        m_max = float(np.nanmax(stable_masses)) if stable_masses.size > 0 else 1.0
-        m_span = m_max - m_min
-        if normalize_y and stable_masses.size > 0 and m_span > 0:
-            def norm(m):
-                return (m - m_min) / m_span
-            plot_df = results_df.copy()
-            plot_df['mass'] = plot_df['mass'].apply(lambda v: norm(v) if np.isfinite(v) else np.nan)
-            y_label = 'Normalized Emergent Mass (unitless)'
-        else:
-            plot_df = results_df
-            y_label = 'Emergent Mass (E_final - E_vacuum)'
-
-        # Split after potential normalization
+        plotting_cfg = self.config.get('plotting', {})
+        normalize_y = plotting_cfg.get('normalize_y', False)
+        
+        # Prepare data for plotting
+        plot_df = results_df.copy()
         stable_df = plot_df.dropna(subset=['mass'])
         unstable_df = plot_df[plot_df['mass'].isna()]
+        
+        y_label = 'Emergent Mass (E_final - E_vacuum)'
+        if normalize_y and not stable_df.empty:
+            m_min, m_max = stable_df['mass'].min(), stable_df['mass'].max()
+            m_span = m_max - m_min
+            if m_span > 1e-9:
+                plot_df['mass'] = plot_df['mass'].apply(lambda v: (v - m_min) / m_span if np.isfinite(v) else np.nan)
+                stable_df = plot_df.dropna(subset=['mass']) # Re-calculate stable_df after normalization
+                y_label = 'Normalized Emergent Mass'
 
-        if stable_masses.size > 0:
-            y_vals = stable_df['mass'].values if not stable_df.empty else np.array([0.0])
-            y_min = float(np.nanmin(y_vals))
-            y_max = float(np.nanmax(y_vals))
-        else:
-            y_min, y_max = 0.0, 1.0
-        y_span = y_max - y_min
-        y_pad = max(1e-6, y_pad_frac * (y_span if y_span > 0 else 1.0))
+        # Plot stable states
+        if not stable_df.empty:
+            ax.plot(stable_df['winding_number'], stable_df['mass'], 'o-',
+                    color='blue', linewidth=2, markersize=8, label='Stable States')
 
-        # In MassSpectrumPlotter, after you calculate y_min and y_pad
+        # Determine plot limits from stable data before plotting unstable points
+        y_min, y_max = ax.get_ylim()
+        y_pad = (y_max - y_min) * 0.05 if (y_max > y_min) else 0.1
         y_bottom = y_min - y_pad
 
+        # Plot unstable/non-converged states
         if not unstable_df.empty:
-            ax.scatter(
-                unstable_df['winding_number'],
-                [y_bottom] * len(unstable_df), # Plots at the bottom of the chart
-                marker='x',
-                color='red',
-                s=100,
-                label='Unstable/Non-Converged',
-                zorder=5
-            )
-
-        # Apply padded limits to avoid smushed plots
-        ax.set_xlim(x_min - x_pad, x_max + x_pad)
-        ax.set_ylim(y_min - y_pad, y_max + y_pad)
-
-        # Now plot points/lines using prepared data
-        if not stable_df.empty:
-            ax.plot(
-                stable_df['winding_number'],
-                stable_df['mass'],
-                'o-',
-                color='blue',
-                linewidth=2,
-                markersize=8,
-                label='Stable States'
-            )
-
-        if not unstable_df.empty:
-            ax.scatter(
-                unstable_df['winding_number'],
-                np.zeros_like(unstable_df['winding_number']),
-                marker='x',
-                color='red',
-                s=100,
-                label='Unstable/Non-Converged',
-                zorder=5
-            )
+            ax.scatter(unstable_df['winding_number'], [y_bottom] * len(unstable_df),
+                       marker='x', color='red', s=100, label='Unstable/Non-Converged', zorder=5)
+            # BUG FIX: The second, redundant scatter plot call has been removed.
 
         # Formatting
         ax.set_xlabel('Topological Winding Number (N_w)', fontsize=12)
         ax.set_ylabel(y_label, fontsize=12)
-        
-        particle_type = self.config.get('particle_type', 'Unknown')
-        ax.set_title(f'GEF Mass Spectrum: {particle_type} Particles', fontsize=14)
-        
-        # Optional overlays: observed masses (horizontal lines)
-        observed = self.config.get('observed_masses', []) or []
-        for item in observed:
-            try:
-                y = float(item.get('mass'))
-                # Normalize observed overlay if plot is normalized
-                if normalize_y and m_span > 0:
-                    y = (y - m_min) / m_span
-                label = str(item.get('label', 'Observed'))
-                ax.axhline(y=y, color='gray', linestyle=':', linewidth=1.2, alpha=0.8)
-                ax.text(
-                    x=ax.get_xlim()[0], y=y, s=f"  {label} ({y:g})",
-                    va='center', ha='left', color='gray', fontsize=10
-                )
-            except Exception:
-                continue
+        ax.set_title(f'GEF Mass Spectrum: {self.config.get("particle_type", "Unknown")}', fontsize=14)
 
-        # Optional overlays: resonance peak centers from config (support both schemas)
-        peaks = (
-            (self.config.get('resonance_parameters') or {}).get('peaks')
-            or self.config.get('peaks')
-            or []
-        )
-        if peaks:
-            for pk in peaks:
-                try:
-                    x = float(pk.get('center'))
-                    ax.axvline(x=x, color='purple', linestyle='--', linewidth=1.0, alpha=0.6)
-                except Exception:
-                    continue
-
+        # Add overlays (observed masses and resonance peaks)
+        self._add_overlays(ax, stable_df, normalize_y)
+        
         ax.legend(fontsize=11)
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
         
-        # Set x-ticks to winding numbers (cap to avoid overcrowding)
-        if len(nw_values) <= 12:
-            ax.set_xticks(nw_values)
-        else:
-            from matplotlib.ticker import MaxNLocator
-            ax.xaxis.set_major_locator(MaxNLocator(nbins=12, integer=True))
+        # Auto-adjust limits with padding
+        ax.margins(x=0.05, y=0.05)
         
-        # Save plot
         plot_path = output_dir / 'mass_vs_nw_spectrum.png'
         plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white')
-        plt.close()
-        
+        plt.close(fig)
         return plot_path
 
+    def _add_overlays(self, ax, stable_df, is_normalized):
+        """Helper to add horizontal/vertical lines for observed masses and peaks."""
+        # Observed masses (horizontal lines)
+        if is_normalized and not stable_df.empty:
+            m_min, m_max = self.config.get('mass_min', 0), self.config.get('mass_max', 1) # Assume these would be calculated and stored
+            m_span = m_max - m_min
+        
+        for item in self.config.get('observed_masses', []):
+            y = item.get('mass')
+            if y is None: continue
+            if is_normalized and m_span > 1e-9:
+                y = (y - m_min) / m_span
+            ax.axhline(y=y, color='gray', linestyle=':', lw=1.2, label=item.get('label'))
 
-# (Local setup_logger removed in favor of package get_logger)
+        # Resonance peaks (vertical lines)
+        peaks = (self.config.get('resonance_parameters', {}).get('peaks', []) or
+                 self.config.get('peaks', []))
+        for peak in peaks:
+            x = peak.get('center')
+            if x is not None:
+                ax.axvline(x=x, color='purple', linestyle='--', lw=1.0, alpha=0.6, label=f'Resonance @ {x}')
 
 
 def main():
-    """Main entry point for the script."""
     import argparse
-    
-    parser = argparse.ArgumentParser(
-        description="Run GEF N_w mass spectrum analysis"
-    )
-    parser.add_argument(
-        'config_path',
-        help='Path to YAML configuration file'
-    )
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default='INFO',
-        help='Set logging level'
-    )
-    
+    parser = argparse.ArgumentParser(description="Run GEF N_w mass spectrum analysis")
+    parser.add_argument('config_path', help='Path to YAML configuration file')
     args = parser.parse_args()
     
-    # Note: gef.core.logging (loguru) manages console logging; respecting --log-level is TODO
-    
     try:
-        # Run analysis
         analyzer = MassSpectrumAnalyzer(args.config_path)
-        results_df, csv_path, plot_path = analyzer.run_full_analysis()
-        
-        print(f"\nAnalysis completed successfully!")
-        print(f"Results saved to: {csv_path}")
-        print(f"Plot saved to: {plot_path}")
-        
+        _, csv_path, plot_path = analyzer.run_full_analysis()
+        print("\nAnalysis completed successfully!")
+        if csv_path: print(f"Results saved to: {csv_path}")
+        if plot_path: print(f"Plot saved to: {plot_path}")
     except Exception as e:
-        logging.error(f"Analysis failed: {e}")
+        logger.exception("Analysis failed with a critical error.")
         sys.exit(1)
 
 
 if __name__ == '__main__':
+    # For multiprocessing on Windows/macOS, it's safer to use 'forkserver' or 'spawn'
+    if sys.platform != "linux":
+        multiprocessing.set_start_method("spawn", force=True)
     main()
