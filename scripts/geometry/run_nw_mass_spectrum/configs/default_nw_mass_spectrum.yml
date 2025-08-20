@@ -33,12 +33,12 @@ resonance_parameters:
   #     amplitude: 1.0     # An even weaker resonance for the third generation.
   #     sigma: 20.0        # A very broad resonance.
 
-  peaks:
+peaks:
   - center: 207
-    amplitude: 2.6
+    amplitude: -2.6 # Make this negative
     sigma: 2.0
   - center: 3477
-    amplitude: 1.1
+    amplitude: -1.1 # Make this negative
     sigma: 10.0
 
 # --- Simulation Grid & Solver Parameters ---

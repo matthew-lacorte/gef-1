@@ -21,6 +21,7 @@ import argparse
 import copy
 import datetime as _dt
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -254,6 +255,19 @@ def _apply_params_to_config(cfg: dict, specs: List[ParamSpec], values: np.ndarra
                 logger.debug(f"No mapping rule for '{spec.name}'. Consider providing 'config_path' in parameter_info.")
 
 
+def _convert_paths_to_strings_in_config(cfg: Any) -> Any:
+    """
+    Recursively traverses a config dict/list and converts Path objects to strings.
+    """
+    if isinstance(cfg, dict):
+        return {k: _convert_paths_to_strings_in_config(v) for k, v in cfg.items()}
+    if isinstance(cfg, list):
+        return [_convert_paths_to_strings_in_config(i) for i in cfg]
+    if isinstance(cfg, Path):
+        return str(cfg)
+    return cfg
+
+
 def _run_analyzer(temp_cfg: dict) -> Tuple[pd.DataFrame, Path, Path]:
     """
     Writes a temporary config and runs the modular analysis script in a
@@ -268,8 +282,11 @@ def _run_analyzer(temp_cfg: dict) -> Tuple[pd.DataFrame, Path, Path]:
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_config_path = temp_dir / "_temp_run_config.yml"
 
+    # --- Convert all Path objects to strings before dumping to YAML ---
+    serializable_cfg = _convert_paths_to_strings_in_config(temp_cfg)
+
     with open(temp_config_path, "w") as f:
-        yaml.dump(temp_cfg, f)
+        yaml.dump(serializable_cfg, f)
 
     # Get the path to the new, modular runner script
     script_path = Path(__file__).parent / "run_analysis.py"
@@ -281,12 +298,15 @@ def _run_analyzer(temp_cfg: dict) -> Tuple[pd.DataFrame, Path, Path]:
 
     try:
         # Run the script as a separate process.
-        # capture_output=True and text=True help with debugging if needed.
-        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=1800)
+        # Stream output so progress is visible during warm-up and runs.
+        subprocess.run(cmd, check=True, text=True, timeout=1800)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         logger.error(f"Subprocess analysis failed for {temp_config_path}")
-        logger.error(f"STDOUT:\n{e.stdout}")
-        logger.error(f"STDERR:\n{e.stderr}")
+        # e.stdout / e.stderr may be None when not capturing output
+        if getattr(e, "stdout", None):
+            logger.error(f"STDOUT:\n{e.stdout}")
+        if getattr(e, "stderr", None):
+            logger.error(f"STDERR:\n{e.stderr}")
         raise e
 
     # The analysis script creates its own timestamped output directory inside
@@ -321,7 +341,8 @@ def _objective(params: np.ndarray, ctx: ObjectiveContext) -> float:
     # --- Trial run settings (fast & robust) ---
     trial_stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     base_out = Path(ctx.base_config["output_dir"])
-    temp_cfg["output_dir"] = base_out / "_temp_optimizer_run" / trial_stamp
+    # Convert to string to avoid YAML serialization issues with Path objects
+    temp_cfg["output_dir"] = str(base_out / "_temp_optimizer_run" / trial_stamp)
 
     # Avoid multiprocessing pickling issues during optimization; allow CPU threads
     temp_cfg["processes"] = 1
@@ -452,15 +473,16 @@ def main():
         warm_cfg = copy.deepcopy(config)
         warm_cfg["nw_sweep_range"] = [1]
         warm_cfg["relaxation_n_skip"] = int(config.get("relaxation_n_skip", 200))
-        warm_cfg["relaxation_n_iter"] = int(config.get("relaxation_n_iter", 256))
+        # Make warm-up quicker and more talkative
+        warm_cfg["relaxation_n_iter"] = 64
         warm_cfg["processes"] = 1
         warm_cfg["threads_per_process"] = int(config.get("threads_per_process", 1))
-        warm_cfg["quiet"] = True
+        warm_cfg["quiet"] = False  # show logs during warm-up so progress is visible
         warm_cfg["skip_plots"] = True
         warm_cfg["skip_save"] = True
         warm_cfg["record_series"] = False
         _run_analyzer(warm_cfg)
-        logger.debug("Warm-up run completed.")
+        logger.info("Warm-up run completed.")
     except Exception:
         # Warm-up is optional; ignore failures
         pass

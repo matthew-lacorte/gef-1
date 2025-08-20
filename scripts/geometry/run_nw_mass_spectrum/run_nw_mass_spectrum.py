@@ -107,7 +107,9 @@ class ResonanceModel:
         invert_amplitudes = resonance_params.get('invert_amplitudes', False)
 
         g_hook_sq = 0.0
-        for peak in resonance_params['peaks']:
+        # Be robust if 'peaks' is missing
+        peaks = resonance_params.get('peaks', []) or []
+        for peak in peaks:
             center = peak['center']
             amplitude = peak['amplitude']
             sigma = peak['sigma']
@@ -142,7 +144,12 @@ class SimulationWorker:
         quiet = bool(base_config.get('quiet', False))
         
         # Calculate effective coupling for this winding number
-        resonance_params = base_config['resonance_parameters']
+        # Accept both structures:
+        # 1) resonance_parameters: { g_base_squared, invert_amplitudes, peaks: [...] }
+        # 2) resonance_parameters: { g_base_squared, invert_amplitudes }, peaks: [...]
+        resonance_params = dict(base_config.get('resonance_parameters', {}))
+        if 'peaks' not in resonance_params and 'peaks' in base_config:
+            resonance_params['peaks'] = base_config['peaks']
         g_eff_sq = ResonanceModel.calculate_g_eff_squared(nw, resonance_params)
         
         if not quiet:
@@ -419,8 +426,7 @@ class MassSpectrumPlotter:
         if not unstable_df.empty:
             ax.scatter(
                 unstable_df['winding_number'],
-                # Plot them at the very bottom of the chart for clarity
-                [y_bottom] * len(unstable_df), 
+                [y_bottom] * len(unstable_df), # Plots at the bottom of the chart
                 marker='x',
                 color='red',
                 s=100,
@@ -479,8 +485,12 @@ class MassSpectrumPlotter:
             except Exception:
                 continue
 
-        # Optional overlays: resonance peak centers from config
-        peaks = (self.config.get('resonance_parameters') or {}).get('peaks', [])
+        # Optional overlays: resonance peak centers from config (support both schemas)
+        peaks = (
+            (self.config.get('resonance_parameters') or {}).get('peaks')
+            or self.config.get('peaks')
+            or []
+        )
         if peaks:
             for pk in peaks:
                 try:

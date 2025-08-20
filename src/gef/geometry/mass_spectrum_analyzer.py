@@ -87,7 +87,12 @@ class SimulationWorker:
         Run a single Hopfion simulation for a given winding number.
         """
         quiet = bool(base_config.get('quiet', False))
-        resonance_params = base_config['resonance_parameters']
+        # Accept both structures:
+        # 1) resonance_parameters: { g_base_squared, invert_amplitudes, peaks: [...] }
+        # 2) resonance_parameters: { g_base_squared, invert_amplitudes }, peaks: [...]
+        resonance_params = dict(base_config.get('resonance_parameters', {}))
+        if 'peaks' not in resonance_params and 'peaks' in base_config:
+            resonance_params['peaks'] = base_config['peaks']
         g_eff_sq = ResonanceModel.calculate_g_eff_squared(nw, resonance_params)
 
         if not quiet:
@@ -177,8 +182,8 @@ class NwMassSpectrumAnalyzer:
             self.config_path = Path(config_or_path)
             self.config = self._load_config()
 
-        self.output_dir = self._setup_output_directory()
         self.quiet = bool(self.config.get('quiet', False))
+        self.output_dir = self._setup_output_directory()
 
     def _load_config(self) -> Dict:
         if not self.config_path.exists():
