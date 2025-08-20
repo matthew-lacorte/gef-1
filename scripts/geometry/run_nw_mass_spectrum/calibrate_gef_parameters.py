@@ -87,6 +87,10 @@ def objective_function(params: np.ndarray, base_config: dict) -> float:
     # 3. Run the full mass spectrum analysis with these new parameters
     #    We create a temporary, non-timestamped directory for each trial run.
     temp_config['output_dir'] = Path(base_config['output_dir']) / "_temp_optimizer_run"
+    # Avoid multiprocessing pickling issues under dynamic import by forcing sequential
+    temp_config['processes'] = 1
+    # Allow thread-level parallelism
+    temp_config['threads_per_process'] = int(base_config.get('threads_per_process', 1))
     
     try:
         analyzer = MassSpectrumAnalyzer(temp_config)
@@ -252,6 +256,9 @@ def main():
 
     # 6. Run the final, high-resolution analysis with the best parameters
     logger.info("Running final high-resolution analysis with best-fit parameters...")
+    # Force sequential for the final high-res run as well (safe default)
+    golden_config['processes'] = 1
+    golden_config['threads_per_process'] = int(config.get('threads_per_process', 1))
     final_analyzer = MassSpectrumAnalyzer(golden_config)
     _, _, plot_path = final_analyzer.run_full_analysis()
     logger.info(f"Final 'Money Plot' saved to {plot_path}")

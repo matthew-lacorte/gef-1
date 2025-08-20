@@ -253,13 +253,18 @@ class MassSpectrumAnalyzer:
         self.logger.info(f"Running simulations for N_w values: {nw_values}")
         self.logger.info(f"Using {num_cores} parallel processes; NUMBA_NUM_THREADS={os.environ.get('NUMBA_NUM_THREADS','')} layer={os.environ.get('NUMBA_THREADING_LAYER','')} ")
         
-        # Run simulations in parallel
-        with multiprocessing.Pool(processes=num_cores) as pool:
-            worker_func = partial(
-                SimulationWorker.run_single_simulation, 
-                base_config=self.config
-            )
-            results = pool.map(worker_func, nw_values)
+        # Build worker function
+        worker_func = partial(
+            SimulationWorker.run_single_simulation,
+            base_config=self.config,
+        )
+
+        # Run simulations: sequential if single process to avoid pickling issues
+        if num_cores == 1:
+            results = list(map(worker_func, nw_values))
+        else:
+            with multiprocessing.Pool(processes=num_cores) as pool:
+                results = pool.map(worker_func, nw_values)
         
         # Convert to DataFrame
         results_df = pd.DataFrame(results)
