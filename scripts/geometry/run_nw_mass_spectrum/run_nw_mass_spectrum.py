@@ -32,7 +32,7 @@ import yaml
 
 # --- Robust Package Imports ---
 try:
-    from gef.physics_core.solvers.hopfion_relaxer import HopfionRelaxer
+    from gef.geometry.hopfion_relaxer import HopfionRelaxer
     from gef.core.logging import logger
 except Exception:  # pragma: no cover
     project_root = Path(__file__).resolve().parent.parent.parent
