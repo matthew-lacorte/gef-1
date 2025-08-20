@@ -278,213 +278,121 @@ def seed_hopfion(lattice_shape: tuple, nw: int, dx: float) -> np.ndarray:
     return phi_final
 
 
-# class HopfionRelaxer:
-#     """Optimized relaxation solver for Hopfion field configurations using comprehensive physics functions."""
-
-#     def __init__(self, config: dict):
-#         """Initialize the solver with the given configuration."""
-#         self.config = config
-
-#         # Grid parameters
-#         self.lattice_shape = tuple(config["lattice_size"])
-#         self.dx = config["dx"]
-
-#         # Physics parameters
-#         self.mu2 = config["mu_squared"]
-#         self.lam = config["lambda_val"]
-#         self.g_sq = config.get("g_squared", 0.0)
-#         self.P_env = config.get("P_env", 0.0)  # Environmental pressure
-#         self.h_sq = config.get("h_squared", 0.0)  # Hook coupling parameter
-
-#         # Relaxation parameters
-#         self.dt = config["relaxation_dt"]
-#         self.min_dt = config.get("min_dt", 1e-8)
-#         self.max_dt = config.get("max_dt", 1e-3)
-#         self.dt_down_factor = config.get("dt_down_factor", 0.5)
-#         self.dt_up_factor = config.get("dt_up_factor", 1.01)
-#         self.max_phi_change_per_step = config.get("max_phi_change_per_step", 0.01)
-
-#         # Initialize field
-#         self.phi = np.zeros(self.lattice_shape, dtype=np.float64)
-
-#         # Preallocate buffers for calculations
-#         self.laplacian_buffer = np.zeros_like(self.phi)
-#         self.force_buffer = np.zeros_like(self.phi)
-
-#         # Friction parameter for momentum-based updates
-#         self.friction = config.get("friction", 0.95)  # The new physics knob!
-
-#         # A new buffer to store the momentum/velocity of the field
-#         self.velocity_buffer = np.zeros_like(self.phi)
-
-#     def initialize_field(self, nw: int):
-#         """Initialize with seeding."""
-#         self.phi = seed_hopfion(self.lattice_shape, nw, self.dx)
-
-#     def run_relaxation(self, return_energy_series: bool = False):
-#         """Relaxation loop with adaptive timestepping and early exit.
-
-#         Args:
-#             return_energy_series (bool): If True, return the energy time series.
-
-#         Returns:
-#             tuple: (final_energy, phi, converged_status, energy_series)
-#                 - final_energy: The final energy of the configuration.
-#                 - phi: The final field configuration.
-#                 - converged_status: Boolean indicating if convergence was reached.
-#                 - energy_series: List of energy values over time (or None).
-#         """
-#         last_energy = 0.0
-#         energy_threshold = self.config.get("early_exit_energy_threshold", 1.0)
-#         i = 0
-#         converged = False
-#         energy_series = [] if return_energy_series else None
-
-#         while i < self.config["max_iterations"]:
-#             self.laplacian_buffer = calculate_laplacian_4d(self.phi, self.dx)
-#             self.force_buffer = calculate_full_potential_derivative(
-#                 self.phi, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq, self.dx
-#             )
-#             force = self.laplacian_buffer - self.force_buffer
-
-#             self.velocity_buffer = (self.friction * self.velocity_buffer) + (self.dt * force)
-#             update_step = self.velocity_buffer
-
-#             max_change = np.max(np.abs(update_step))
-#             if max_change > self.max_phi_change_per_step:
-#                 self.dt *= self.dt_down_factor
-#                 # print(f"WARNING: Large update ({max_change:.2e}). Reducing dt to {self.dt:.2e}")
-#                 if self.dt < self.min_dt:
-#                     # print("ERROR: Timestep fell below minimum. Simulation failed.")
-#                     return np.nan, self.phi, False, energy_series
-#                 continue
-
-#             if i % 50 == 0 and i > 0:
-#                 self.dt = min(self.max_dt, self.dt * self.dt_up_factor)
-
-#             self.phi += update_step
-#             i += 1
-
-#             if i % 100 == 0:
-#                 current_energy = calculate_full_total_energy(
-#                     self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq
-#                 )
-#                 if return_energy_series:
-#                     energy_series.append(current_energy)
-
-#                 energy_change = abs(current_energy - last_energy)
-#                 power_dissipation = energy_change / self.dt
-#                 # print(
-#                 #     f"Iter: {i:6d}, dt: {self.dt:.2e}, E: {current_energy:10.2f}, ΔE: {energy_change:10.2e}, Power: {power_dissipation:10.2e}"
-#                 # )
-
-#                 if current_energy > energy_threshold:
-#                     # print(
-#                     #     f"INFO: Energy ({current_energy:.2f}) exceeded threshold ({energy_threshold:.2f}). "
-#                     #     "Configuration is unstable. Terminating early."
-#                     # )
-#                     return np.nan, self.phi, False, energy_series
-
-#                 if power_dissipation < float(self.config["convergence_threshold"]) and i > 100:
-#                     # print(
-#                     #     f"INFO: Power dissipation ({power_dissipation:.2e}) is below threshold. Convergence reached."
-#                     # )
-#                     converged = True
-#                     break
-
-#                 last_energy = current_energy
-
-#         # if i >= self.config["max_iterations"] and not converged:
-#             # print(
-#             #     f"INFO: Reached maximum iterations ({self.config['max_iterations']}) without convergence."
-#             # )
-
-#         final_energy = calculate_full_total_energy(
-#             self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq
-#         )
-#         if return_energy_series:
-#             energy_series.append(final_energy)
-
-#         return final_energy, self.phi, converged, energy_series
-
 class HopfionRelaxer:
     """Optimized relaxation solver for Hopfion field configurations using comprehensive physics functions."""
 
     def __init__(self, config: dict):
         """Initialize the solver with the given configuration."""
         self.config = config
+
+        # Grid parameters
         self.lattice_shape = tuple(config["lattice_size"])
         self.dx = config["dx"]
+
+        # Physics parameters
         self.mu2 = config["mu_squared"]
         self.lam = config["lambda_val"]
         self.g_sq = config.get("g_squared", 0.0)
         self.P_env = config.get("P_env", 0.0)
         self.h_sq = config.get("h_squared", 0.0)
-        self.friction = config.get("friction", 0.95)
+
+        # Relaxation parameters
         self.dt = config["relaxation_dt"]
+        self.friction = config.get("friction", 0.95)
+
+        # Adaptive timestepping
+        self.min_dt = config.get("min_dt", 1e-9)
+        self.max_dt = config.get("max_dt", 1e-3)
+        self.dt_down_factor = config.get("dt_down_factor", 0.5)
+        self.dt_up_factor = config.get("dt_up_factor", 1.01)
+        self.max_phi_change_per_step = config.get("max_phi_change_per_step", 0.01)
+
+        # Convergence & Exit conditions
+        self.max_iterations = config.get("max_iterations", 20000)
+        self.convergence_threshold = config.get("convergence_threshold", 1e-8)
+        self.early_exit_energy_threshold = config.get("early_exit_energy_threshold", 1e6)
+
+        # Buffers
         self.phi = np.zeros(self.lattice_shape, dtype=np.float64)
         self.velocity_buffer = np.zeros_like(self.phi)
+        self.laplacian_buffer = np.zeros_like(self.phi)
 
     def initialize_field(self, nw: int):
-        """Initialize with seeding."""
+        """Initialize the field with an analytical seed."""
         self.phi = seed_hopfion(self.lattice_shape, nw, self.dx)
 
-    def run_relaxation(
-        self,
-        n_skip: int = 5000,
-        n_iter: int = 4096,
-        probe_point: tuple = None,
-        record_series: bool = True,
-    ):
-        """
-        Runs the relaxation to find a stable limit cycle.
+    def run_relaxation(self, n_skip=None, n_iter=None, record_series: bool = False):
+        """Main relaxation loop with adaptive timestepping and convergence checks."""
+        last_energy = 0.0
+        converged = False
+        phi_series = [] if record_series else None
 
-        Args:
-            n_skip (int): Number of transient iterations to discard.
-            n_iter (int): Number of iterations to record for period analysis.
-            probe_point (tuple): The (i, j, k, l) coordinate to monitor.
+        # The calibration script uses n_skip and n_iter to control total iterations
+        # for its warmup and main runs. We respect that if provided.
+        total_iterations = self.max_iterations
+        if n_skip is not None and n_iter is not None:
+            total_iterations = n_skip + n_iter
 
-        Returns:
-        tuple: (phi_series, final_energy)
-            - phi_series: Time series at the probe point (or None if record_series=False)
-            - final_energy: The final, stable total energy of the system.
-        """
-        if probe_point is None:
-            # Choose a point off-center to be sensitive to oscillations
-            probe_point = (
-                self.lattice_shape[0] // 4,
-                self.lattice_shape[1] // 4,
-                self.lattice_shape[2] // 4,
-                self.lattice_shape[3] // 4,
-            )
-
-        # Prepare reusable buffers
-        lap_buf = np.zeros_like(self.phi)
-
-        # Transient phase to skip initial dynamics
-        for _ in range(n_skip):
-            force = calculate_laplacian_4d(self.phi, self.dx, out=lap_buf) - calculate_full_potential_derivative(
+        for i in range(total_iterations):
+            # Calculate force
+            force = calculate_laplacian_4d(
+                self.phi, self.dx, out=self.laplacian_buffer
+            ) - calculate_full_potential_derivative(
                 self.phi, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq, self.dx
             )
-            self.velocity_buffer = (self.friction * self.velocity_buffer) + (self.dt * force)
-            self.phi += self.velocity_buffer
 
-        # --- Measurement Phase (record the orbit) ---
-        phi_series = None if not record_series else np.zeros(n_iter, dtype=np.float64)
-        for i in range(n_iter):
-            force = calculate_laplacian_4d(self.phi, self.dx, out=lap_buf) - calculate_full_potential_derivative(
-                self.phi, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq, self.dx
-            )
+            # Update velocity and position with momentum
             self.velocity_buffer = (self.friction * self.velocity_buffer) + (self.dt * force)
-            self.phi += self.velocity_buffer
-            if record_series:
-                phi_series[i] = self.phi[probe_point]
+            update_step = self.velocity_buffer
+
+            # --- Adaptive Timestep Control ---
+            max_change = np.max(np.abs(update_step))
+            if max_change > self.max_phi_change_per_step:
+                self.dt = max(self.min_dt, self.dt * self.dt_down_factor)
+                # Reject step by re-calculating with smaller dt
+                self.velocity_buffer = (
+                    self.friction * self.velocity_buffer
+                ) + (self.dt * force)
+                update_step = self.velocity_buffer
+
+            # Slowly increase timestep if stable
+            if i % 50 == 0 and i > 0:
+                self.dt = min(self.max_dt, self.dt * self.dt_up_factor)
+
+            self.phi += update_step
+
+            # --- Convergence & Early Exit Checks (every 100 steps) ---
+            if i % 100 == 0:
+                current_energy = calculate_full_total_energy(
+                    self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq
+                )
+
+                if record_series:
+                    phi_series.append(self.phi[self.lattice_shape[0] // 4, self.lattice_shape[1] // 4, self.lattice_shape[2] // 4, self.lattice_shape[3] // 4])
+
+                # 1. Check for unstable explosion
+                if not np.isfinite(current_energy) or current_energy > self.early_exit_energy_threshold:
+                    return None if not record_series else np.array(phi_series), np.nan
+
+                # 2. Check for convergence
+                if i > 100:
+                    energy_change = abs(current_energy - last_energy)
+                    # Power dissipation is a good metric for convergence
+                    power_dissipation = energy_change / self.dt
+                    if power_dissipation < self.convergence_threshold:
+                        converged = True
+                        break
+                last_energy = current_energy
 
         final_energy = calculate_full_total_energy(
             self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq
         )
 
-        return phi_series, final_energy
+        if not converged:
+            # If we maxed out iterations without converging, it's not a stable state
+            final_energy = np.nan
+
+        return None if not record_series else np.array(phi_series), final_energy
 
 @njit(fastmath=True, cache=True)
 def calculate_final_total_energy(

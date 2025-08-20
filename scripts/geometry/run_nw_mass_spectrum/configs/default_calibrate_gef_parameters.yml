@@ -6,13 +6,14 @@ output_dir: "data/sim_outputs/calibration_runs/"
 
 # --- Calibration Target: The Ground Truth from Our Universe ---
 calibration_target:
-  electron_mass_MeV: 0.511
+  # We now target the ratio of the two higher generations, as it's the cleanest signal
   muon_mass_MeV: 105.66
   tau_mass_MeV: 1776.86
-  
-  # The optimizer will target these precise ratios
-  muon_to_electron_mass_ratio: 206.77 
-  tau_to_electron_mass_ratio: 3477.2
+  tau_to_muon_mass_ratio: 16.816 # 1776.86 / 105.66
+
+objective:
+  mode: integrated_ratio
+  use_log_error: true  # optional
 
 # --- Fixed Physical Parameters of the GEF Lagrangian ---
 # These are the "laws of nature" we are assuming for this run.
@@ -24,29 +25,33 @@ h_squared: 0.0     # No self-interaction for single leptons
 
 # --- Optimization Parameters: The "Dials" to be Tuned ---
 optimization_params:
-  max_iterations: 50 # How many attempts the optimizer gets
-  
-  # This list defines the parameters the optimizer can change, their order,
-  # initial guess, and allowed range (bounds).
-  parameters: [muon_amplitude, muon_sigma, tau_amplitude, tau_sigma]
-  
+  max_iterations: 50
+  # Integration width factors (in units of sigma) for the mass calculation
+  muon_integration_width_factor: 6.0
+  tau_integration_width_factor: 6.0
+  # Save the CSV from every trial run? (can be slow)
+  save_csv_during_opt: false
   parameter_info:
     - name: "muon_amplitude"
       initial: -2.5
       min: -10.0
       max: -0.1
+      config_path: "resonance_parameters.peaks[0].amplitude"
     - name: "muon_sigma"
-      initial: 5.0
-      min: 0.5
-      max: 20.0
+      initial: 10.0
+      min: 1.0
+      max: 30.0
+      config_path: "resonance_parameters.peaks[0].sigma"
     - name: "tau_amplitude"
       initial: -1.0
       min: -10.0
       max: -0.1
+      config_path: "resonance_parameters.peaks[1].amplitude"
     - name: "tau_sigma"
-      initial: 20.0
-      min: 1.0
-      max: 100.0
+      initial: 50.0
+      min: 10.0
+      max: 200.0
+      config_path: "resonance_parameters.peaks[1].sigma"
 
 # --- Resonance Model (Structure) ---
 # The optimizer will fill in the 'amplitude' and 'sigma' values.
@@ -79,27 +84,40 @@ relaxation_n_skip: 500
 # --- Sweep Configuration (for each trial run) ---
 # Use a sparse "locator" sweep to be fast during optimization.
 nw_sweep_range:
+  # Baseline points
   - 1
-  # Sparse scan up to the first peak
+  - 50
   - 100
+  # Dense scan across the entire Muon valley
   - 150
-  # Dense scan around the muon peak
+  - 160
+  - 170
+  - 180
+  - 190
   - 200
   - 205
   - 207
   - 210
   - 215
+  - 220
+  - 230
+  - 240
+  - 250
   # Sparse scan between peaks
   - 1000
   - 2000
   - 3000
-  # Dense scan around the tau peak
+  # Dense scan across the entire Tau valley
+  - 3200
+  - 3300
   - 3400
   - 3450
   - 3477
   - 3500
   - 3550
-  # A final point to ensure the sea level
+  - 3600
+  - 3700
+  # Final baseline point
   - 4000
 
   

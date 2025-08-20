@@ -1,308 +1,542 @@
 #!/usr/bin/env python3
 """
-GEF Parameter Calibration Engine
+GEF Parameter Calibration Engine (Unified)
 
-This script uses numerical optimization to find the set of fundamental GEF
-parameters that best reproduces observed physical constants, such as particle
-mass ratios.
+Combines the optimized operational pipeline with a more physically meaningful
+objective based on integrated valley mass. Switch objective via config:
 
-It reads a master calibration config, defines an objective function to minimize,
-and uses scipy.optimize to search the parameter space.
+objective:
+  mode: integrated_ratio   # or: min_ratio
+  use_log_error: true      # (optional, defaults true for ratios)
+
+Supports parameter specs by name, and optionally dotted config paths.
 
 Author: GEF Research Team
 Date: 2025
 """
 
+from __future__ import annotations
+
+import argparse
+import copy
+import datetime as _dt
 import logging
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from importlib.machinery import SourceFileLoader
-from importlib.util import spec_from_loader, module_from_spec
+from typing import Any, Dict, List, Tuple, Optional, Callable
 
 import numpy as np
+import pandas as pd
 import yaml
 from scipy.optimize import minimize
+from scipy.integrate import simps
 
-# --- Add project root to path for robust imports (optional) ---
-project_root = Path(__file__).resolve().parent.parent.parent
+# --- Add project root to path for robust imports (optional & safe) ---
+project_root = Path(__file__).resolve().parents[2]  # up two (e.g., .../gef)
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-# --- Package logger (Loguru) ---
-try:
-    from gef.core.logging import logger  # type: ignore
-except Exception:
-    # Fallback to stdlib logger if package logger unavailable
-    logger = logging.getLogger(__name__)
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-
-
-# --- Load MassSpectrumAnalyzer from sibling script robustly ---
-def _load_mass_spectrum_analyzer():
-    runner_path = (Path(__file__).resolve().parent / "run_nw_mass_spectrum.py").resolve()
-    loader = SourceFileLoader("nw_mass_runner", str(runner_path))
-    spec = spec_from_loader(loader.name, loader)
-    module = module_from_spec(spec)
-    loader.exec_module(module)  # type: ignore[attr-defined]
-    return module.MassSpectrumAnalyzer
-
-MassSpectrumAnalyzer = _load_mass_spectrum_analyzer()
-
-# --- The Core of the Calibrator: The Objective Function ---
-
-def objective_function(params: np.ndarray, base_config: dict) -> float:
-    """
-    This is the function the optimizer will try to minimize.
-
-    It takes a set of trial parameters, runs the full mass spectrum simulation,
-    and returns a single "error" value indicating how far the simulation's
-    results are from the real-world target values.
-    """
-    # Use package logger
-    # 1. Create a temporary config for this specific simulation run
-    temp_config = base_config.copy()
-    
-    # 2. Unpack the 'params' array and update the temp_config.
-    #    This mapping must match the 'optimization_params' in the YAML.
-    opt_params_map = base_config['optimization_params']['parameters']
-    
-    temp_config['resonance_parameters']['peaks'][0]['amplitude'] = params[opt_params_map.index('muon_amplitude')]
-    temp_config['resonance_parameters']['peaks'][0]['sigma'] = params[opt_params_map.index('muon_sigma')]
-    temp_config['resonance_parameters']['peaks'][1]['amplitude'] = params[opt_params_map.index('tau_amplitude')]
-    temp_config['resonance_parameters']['peaks'][1]['sigma'] = params[opt_params_map.index('tau_sigma')]
-    
-    # You can add other parameters like P_env here if you want to optimize them too
-    # temp_config['P_env'] = params[opt_params_map.index('P_env')]
-
-    logger.info("-" * 60)
-    logger.info(f"Optimizer trying new parameters:")
-    logger.info(f"  Muon Amp: {params[0]:.4f}, Muon Sigma: {params[1]:.4f}")
-    logger.info(f"  Tau Amp:  {params[2]:.4f}, Tau Sigma:  {params[3]:.4f}")
-
-    # 3. Run simulations only (no plotting/saving) to speed up optimization
-    #    Create a unique subdir for each trial so CSVs accumulate for inspection.
-    import datetime as _dt
-    trial_stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    temp_config['output_dir'] = Path(base_config['output_dir']) / "_temp_optimizer_run" / trial_stamp
-    # Avoid multiprocessing pickling issues under dynamic import by forcing sequential
-    temp_config['processes'] = 1
-    # Allow thread-level parallelism
-    temp_config['threads_per_process'] = int(base_config.get('threads_per_process', 1))
-    # Quiet mode and skip heavy I/O during optimization (but DO save CSVs)
-    temp_config['quiet'] = True
-    temp_config['skip_plots'] = True
-    temp_config['skip_save'] = False
-    temp_config['record_series'] = False
-    
+# --- Logger resolution: try package logger, then a utility, then stdlib ---
+def _get_logger() -> logging.Logger:
     try:
-        analyzer = MassSpectrumAnalyzer(temp_config)
-        results_df = analyzer.run_parallel_simulations()
-        # Write CSVs during optimization if not skipped
-        csv_path = None
-        if not temp_config.get('skip_save', False):
-            csv_path = analyzer.save_results(results_df)
-    except Exception as e:
-        logger.error(f"A simulation run failed during optimization: {e}")
-        return 1e12 # Return a huge error value if the simulation crashes
-
-    # 4. Calculate the emergent masses and their ratios
-    target_info = base_config['calibration_target']
-    
-    # Define the ground state mass (the "electron")
-    # This is the stable energy of the "sea" state, far from resonances.
-    sea_energy = results_df[results_df['winding_number'] == 1]['final_energy'].iloc[0]
-    
-    # Find the minimum energy (most stable state) in each generation's valley
-    muon_valley_df = results_df[
-        (results_df['winding_number'] > 10) & 
-        (results_df['winding_number'] < 1000)
-    ]
-    tau_valley_df = results_df[
-        (results_df['winding_number'] > 1000)
-    ]
-    
-    if muon_valley_df.empty or tau_valley_df.empty or muon_valley_df['final_energy'].min() > sea_energy:
-        logger.warning("Optimizer chose parameters that did not produce stable generation valleys.")
-        return 1e9 # Return a large error if generations are not stable
-
-    min_muon_energy = muon_valley_df['final_energy'].min()
-    min_tau_energy = tau_valley_df['final_energy'].min()
-    
-    # Mass is energy above the deepest ground state (the Tau valley)
-    deepest_ground_state = min_tau_energy
-    
-    mass_1 = sea_energy - deepest_ground_state
-    mass_2 = min_muon_energy - deepest_ground_state
-    mass_3 = 0 # By definition
-
-    # Avoid division by zero if a mass is zero or negative
-    if mass_1 <= 0 or mass_2 <= 0:
-        logger.warning("Non-positive masses calculated, returning large error.")
-        return 1e6
-
-    simulated_mu_e_ratio = mass_2 / mass_1
-    simulated_tau_e_ratio = mass_3 / mass_1 # This needs re-evaluation, let's focus on mu/e for now
-
-    # Let's refine the mass definition. Mass should be energy above the *sea*.
-    # The valleys represent binding energy.
-    mass_electron = 1.0 # Define the sea as mass = 1 in arbitrary units
-    mass_muon = (sea_energy - min_muon_energy)
-    mass_tau = (sea_energy - min_tau_energy)
-
-    if mass_muon <= 0 or mass_tau <= 0:
-        logger.warning("Non-positive binding energies calculated, returning large error.")
-        return 1e6
-
-    simulated_mu_e_ratio = mass_muon
-    simulated_tau_e_ratio = mass_tau
-
-    # 5. Calculate the final error value (sum of squared log differences)
-    target_mu_e_ratio = target_info['muon_to_electron_mass_ratio']
-    target_tau_e_ratio = target_info['tau_to_electron_mass_ratio']
-    
-    # We need to scale our arbitrary units. Let's scale our simulation so that the
-    # simulated electron mass matches the real one. The "sea" state is not the electron.
-    # The N_w=1 state is the electron. Let's find its energy.
-    m_e_energy = results_df[results_df['winding_number'] == 1.0]['final_energy'].iloc[0]
-    m_mu_energy = min_muon_energy
-    m_tau_energy = min_tau_energy
-
-    # Mass is energy above the deepest state.
-    deepest_state = m_tau_energy
-    m_e = m_e_energy - deepest_state
-    m_mu = m_mu_energy - deepest_state
-    m_tau = 0 # By definition
-    
-    if m_e <= 0 or m_mu <= 0:
-        return 1e6
-
-    simulated_mu_e_ratio = m_mu / m_e
-    simulated_tau_e_ratio = m_tau / m_e # This is zero, let's fix the definition.
-
-    # --- REVISED AND CORRECTED MASS DEFINITION ---
-    # Let's assume the N_w=1 state is the electron. Its mass is M_e.
-    # The energy valleys for Muon and Tau represent states with mass M_mu and M_tau.
-    # Mass = E_final - E_vacuum.
-    m_e = results_df[results_df['winding_number'] == 1.0]['mass'].iloc[0]
-    m_mu = results_df.loc[muon_valley_df['mass'].idxmin()]['mass']
-    m_tau = results_df.loc[tau_valley_df['mass'].idxmin()]['mass']
-
-    if m_e <= 0 or m_mu <= 0 or m_tau <=0:
-        logger.warning("Negative mass calculated. Returning large error.")
-        return 1e6
-
-    simulated_mu_e_ratio = m_mu / m_e
-    simulated_tau_e_ratio = m_tau / m_e
-    
-    error_mu = (np.log(simulated_mu_e_ratio) - np.log(target_mu_e_ratio))**2
-    error_tau = (np.log(simulated_tau_e_ratio) - np.log(target_tau_e_ratio))**2
-    
-    total_error = error_mu + error_tau
-    
-    # Emit a concise summary for each trial regardless of quiet flag
-    try:
-        summary = {
-            "csv": str(csv_path) if csv_path else "<skip_save>",
-            "sea_energy": float(sea_energy),
-            "min_muon_energy": float(min_muon_energy),
-            "min_tau_energy": float(min_tau_energy),
-            "m_e": float(m_e),
-            "m_mu": float(m_mu),
-            "m_tau": float(m_tau),
-            "mu/e": float(simulated_mu_e_ratio),
-            "tau/e": float(simulated_tau_e_ratio),
-            "error": float(total_error),
-        }
-        logger.info(f"Trial results: {summary}")
+        # Preferred: your package logger
+        from gef.core.logging import logger as pkg_logger  # type: ignore
+        return pkg_logger  # type: ignore[return-value]
     except Exception:
         pass
-    
-    return total_error
+    try:
+        # Secondary: a utility that returns a configured logger
+        from gef.utils.logging_utils import setup_logger  # type: ignore
+        return setup_logger(__name__)
+    except Exception:
+        pass
 
-# --- Main Calibration Execution ---
+    # Fallback: stdlib
+    _logger = logging.getLogger("gef.calibration.fit_lepton_hierarchy")
+    if not _logger.handlers:
+        handler = logging.StreamHandler()
+        fmt = logging.Formatter(
+            "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+        )
+        handler.setFormatter(fmt)
+        _logger.addHandler(handler)
+        _logger.setLevel(logging.INFO)
+    return _logger
+
+
+logger = _get_logger()
+
+# --- MassSpectrumAnalyzer resolution (package import, then sibling dynamic) ---
+def _resolve_mass_spectrum_analyzer():
+    try:
+        from experiments.scripts.run_nw_mass_spectrum import MassSpectrumAnalyzer  # type: ignore
+        logger.debug("Imported MassSpectrumAnalyzer from experiments.scripts.*")
+        return MassSpectrumAnalyzer
+    except Exception:
+        pass
+    try:
+        from gef.experiments.scripts.run_nw_mass_spectrum import MassSpectrumAnalyzer  # type: ignore
+        logger.debug("Imported MassSpectrumAnalyzer from gef.experiments.scripts.*")
+        return MassSpectrumAnalyzer
+    except Exception:
+        pass
+
+    # Dynamic sibling import
+    try:
+        from importlib.machinery import SourceFileLoader
+        from importlib.util import spec_from_loader, module_from_spec
+
+        sibling = (Path(__file__).resolve().parent / "run_nw_mass_spectrum.py").resolve()
+        loader = SourceFileLoader("nw_mass_runner", str(sibling))
+        spec = spec_from_loader(loader.name, loader)
+        module = module_from_spec(spec)
+        loader.exec_module(module)  # type: ignore[attr-defined]
+        logger.debug("Dynamically loaded MassSpectrumAnalyzer from sibling file.")
+        return module.MassSpectrumAnalyzer  # type: ignore[attr-defined]
+    except Exception as e:
+        raise ImportError(
+            "Unable to import MassSpectrumAnalyzer from known locations."
+        ) from e
+
+
+MassSpectrumAnalyzer = _resolve_mass_spectrum_analyzer()
+
+# ---------- Helpers for config parameter mapping ----------
+
+def _set_nested_config(cfg: dict, dotted_path: str, value: Any) -> None:
+    """
+    Set cfg["a"]["b"][2]["c"] via dotted_path like 'a.b[2].c'.
+    """
+    import re
+
+    def _parse_tokens(path: str):
+        # Split on dots, but keep bracket indices as part of tokens
+        tokens = []
+        for part in path.split("."):
+            # Split "peaks[1]" into ("peaks", 1)
+            m = re.findall(r"([^\[\]]+)(?:\[(\d+)\])?", part)
+            if not m:
+                raise ValueError(f"Bad path token: {part}")
+            name, idx = m[0]
+            tokens.append((name, None if idx == "" else int(idx)))
+        return tokens
+
+    ref = cfg
+    tokens = _parse_tokens(dotted_path)
+    for i, (name, maybe_idx) in enumerate(tokens):
+        if i == len(tokens) - 1:
+            # final set
+            if maybe_idx is None:
+                ref[name] = value
+            else:
+                ref[name][maybe_idx] = value
+            return
+        # descend
+        ref = ref[name] if maybe_idx is None else ref[name][maybe_idx]
+
+
+@dataclass
+class ParamSpec:
+    name: str
+    bounds: Tuple[float, float]
+    initial: float
+    # Optional explicit config path override like "resonance_parameters.peaks[0].sigma"
+    config_path: Optional[str] = None
+
+
+def _build_param_specs(opt_cfg: dict) -> List[ParamSpec]:
+    """
+    Supports either:
+      optimization_params.parameter_info: [{name, initial, min, max, config_path?}]
+    or keeps compatibility with optimization_params.parameters (name list).
+    """
+    specs: List[ParamSpec] = []
+    if "parameter_info" in opt_cfg:
+        for p in opt_cfg["parameter_info"]:
+            specs.append(
+                ParamSpec(
+                    name=p["name"],
+                    initial=float(p["initial"]),
+                    bounds=(float(p["min"]), float(p["max"])),
+                    config_path=p.get("config_path"),
+                )
+            )
+    elif "parameters" in opt_cfg and "initial_guess" in opt_cfg:
+        # legacy fallback
+        names = opt_cfg["parameters"]
+        init = opt_cfg["initial_guess"]
+        bnds = opt_cfg.get("bounds", [(None, None)] * len(names))
+        for i, nm in enumerate(names):
+            low, high = bnds[i]
+            specs.append(
+                ParamSpec(
+                    name=nm,
+                    initial=float(init[i]),
+                    bounds=(float(low), float(high)),
+                    config_path=None,
+                )
+            )
+    else:
+        raise KeyError(
+            "optimization_params must include 'parameter_info' or ('parameters' and 'initial_guess')."
+        )
+    return specs
+
+
+# ---------- Physics-centric utilities ----------
+
+def _calculate_integrated_mass(
+    df: pd.DataFrame,
+    nw_center: float,
+    sigma: float,
+    width_factor: float,
+    sea_level_energy: float,
+) -> float:
+    """
+    Physically meaningful integrated mass ~ ∫ max(0, E_sea - E(N_w)) dN_w
+    integrated over a window centered on the resonance valley center.
+
+    Window width = width_factor * sigma  (NOT center-scaled).
+    """
+    if sigma <= 0 or width_factor <= 0:
+        return 0.0
+
+    half_width = 0.5 * width_factor * sigma
+    nw_min = nw_center - half_width
+    nw_max = nw_center + half_width
+
+    peak_df = df[(df["winding_number"] >= nw_min) & (df["winding_number"] <= nw_max)].copy()
+    if peak_df.empty or len(peak_df) < 3:
+        return 0.0
+
+    peak_df.sort_values("winding_number", inplace=True)
+    energy_deficit = sea_level_energy - peak_df["final_energy"].to_numpy()
+    energy_deficit = np.where(energy_deficit > 0.0, energy_deficit, 0.0)
+
+    integrated = simps(energy_deficit, peak_df["winding_number"].to_numpy())
+    return float(integrated if integrated > 0 else 0.0)
+
+
+def _infer_sea_level_energy(df: pd.DataFrame) -> float:
+    """
+    Estimate 'sea' (baseline) energy as mean over very low winding numbers,
+    with sensible fallbacks if exact bins are missing.
+    """
+    if "final_energy" not in df.columns or "winding_number" not in df.columns:
+        raise KeyError("DataFrame must contain 'final_energy' and 'winding_number'.")
+
+    low_region = df[df["winding_number"] <= 10]
+    if len(low_region) >= 3:
+        return float(low_region["final_energy"].mean())
+
+    # Fallbacks
+    w1 = df[df["winding_number"] == 1.0]
+    if not w1.empty:
+        return float(w1["final_energy"].iloc[0])
+
+    return float(df["final_energy"].median())
+
+
+def _pick_valley_min(df: pd.DataFrame, nw_min: float, nw_max: Optional[float]) -> float:
+    mask = df["winding_number"] > nw_min
+    if nw_max is not None:
+        mask &= (df["winding_number"] < nw_max)
+    sub = df[mask]
+    if sub.empty:
+        return np.inf
+    return float(sub["final_energy"].min())
+
+
+# ---------- Objective functions (unified) ----------
+
+@dataclass
+class ObjectiveContext:
+    base_config: dict
+    param_specs: List[ParamSpec]
+    mode: str  # "integrated_ratio" or "min_ratio"
+    use_log_error: bool
+
+
+def _apply_params_to_config(cfg: dict, specs: List[ParamSpec], values: np.ndarray) -> None:
+    """
+    Update cfg in-place using either well-known names (muon/tau amplitude/sigma)
+    or explicit dotted config_path if provided in the spec.
+    """
+    name_to_val = {specs[i].name: float(values[i]) for i in range(len(specs))}
+    for spec in specs:
+        val = name_to_val[spec.name]
+        if spec.config_path:
+            _set_nested_config(cfg, spec.config_path, val)
+            continue
+
+        # Backward-compatible mapping by conventional names:
+        if spec.name == "muon_amplitude":
+            cfg["resonance_parameters"]["peaks"][0]["amplitude"] = val
+        elif spec.name == "muon_sigma":
+            cfg["resonance_parameters"]["peaks"][0]["sigma"] = val
+        elif spec.name == "tau_amplitude":
+            cfg["resonance_parameters"]["peaks"][1]["amplitude"] = val
+        elif spec.name == "tau_sigma":
+            cfg["resonance_parameters"]["peaks"][1]["sigma"] = val
+        else:
+            # As a last resort, set a top-level key if it exists
+            if spec.name in cfg:
+                cfg[spec.name] = val
+            else:
+                logger.debug(f"No mapping rule for '{spec.name}'. Consider providing 'config_path' in parameter_info.")
+
+
+def _run_analyzer(temp_cfg: dict):
+    """
+    Run a high-level analysis (preferred) or, if unavailable,
+    run parallel simulations then save results.
+    Returns (results_df, csv_path_or_None, money_plot_path_or_None).
+    """
+    analyzer = MassSpectrumAnalyzer(temp_cfg)
+
+    # Prefer a "full" analysis if provided by your Analyzer
+    if hasattr(analyzer, "run_full_analysis"):
+        out = analyzer.run_full_analysis()
+        # Expecting tuple: (df, maybe_figs, maybe_plot_path)
+        if isinstance(out, tuple) and len(out) >= 1:
+            df = out[0]
+            money_plot = out[2] if len(out) >= 3 else None
+        else:
+            raise RuntimeError("run_full_analysis returned unexpected structure.")
+        csv_path = None
+        # Save if requested and supported
+        if not temp_cfg.get("skip_save", True) and hasattr(analyzer, "save_results"):
+            csv_path = analyzer.save_results(df)
+        return df, csv_path, money_plot
+
+    # Fallback path: run the lower-level simulation
+    df = analyzer.run_parallel_simulations()
+    csv_path = None
+    if not temp_cfg.get("skip_save", True) and hasattr(analyzer, "save_results"):
+        csv_path = analyzer.save_results(df)
+    # Ensure tuple signature is consistent
+    return df, csv_path, None
+
+
+def _objective(params: np.ndarray, ctx: ObjectiveContext) -> float:
+    """
+    Unified objective wrapper: builds temp config, runs analyzer, computes error.
+    """
+    temp_cfg = copy.deepcopy(ctx.base_config)
+
+    # --- Apply trial parameters ---
+    _apply_params_to_config(temp_cfg, ctx.param_specs, params)
+
+    # --- Trial run settings (fast & robust) ---
+    trial_stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    base_out = Path(ctx.base_config["output_dir"])
+    temp_cfg["output_dir"] = base_out / "_temp_optimizer_run" / trial_stamp
+
+    # Avoid multiprocessing pickling issues during optimization; allow CPU threads
+    temp_cfg["processes"] = 1
+    temp_cfg["threads_per_process"] = int(ctx.base_config.get("threads_per_process", 1))
+    temp_cfg["quiet"] = True
+    temp_cfg["skip_plots"] = True
+
+    # Let config control CSV saves during optimization; default False for speed
+    opt_cfg = ctx.base_config.get("optimization_params", {})
+    save_csv = bool(opt_cfg.get("save_csv_during_opt", False))
+    temp_cfg["skip_save"] = not save_csv
+    temp_cfg["record_series"] = False
+
+    # --- Run the simulation/analysis ---
+    try:
+        results_df, csv_path, _ = _run_analyzer(temp_cfg)
+    except Exception as e:
+        logger.error(f"Simulation failed during optimization: {e}")
+        return 1e12
+
+    # --- Basic sanity logs ---
+    if "final_energy" in results_df.columns:
+        emin = float(results_df["final_energy"].min())
+        emax = float(results_df["final_energy"].max())
+        logger.info(f"Sim OK. {len(results_df)} rows. E-range [{emin:.3g}, {emax:.3g}] CSV: {csv_path or '<skip>'}")
+
+    # --- Objective choice ---
+    mode = ctx.mode.lower()
+    target = ctx.base_config.get("calibration_target", {})
+
+    if mode == "integrated_ratio":
+        # Physically meaningful integrated valley masses
+        peaks = ctx.base_config["resonance_parameters"]["peaks"]
+        mu_center = float(peaks[0]["center"])
+        tau_center = float(peaks[1]["center"])
+        mu_sigma = float(peaks[0]["sigma"])
+        tau_sigma = float(peaks[1]["sigma"])
+
+        mu_wf = float(opt_cfg.get("muon_integration_width_factor", 6.0))
+        tau_wf = float(opt_cfg.get("tau_integration_width_factor", 6.0))
+
+        sea = _infer_sea_level_energy(results_df)
+
+        mass_mu = _calculate_integrated_mass(results_df, mu_center, mu_sigma, mu_wf, sea)
+        mass_tau = _calculate_integrated_mass(results_df, tau_center, tau_sigma, tau_wf, sea)
+
+        if mass_mu <= 0 or mass_tau <= 0:
+            logger.warning("Non-positive integrated masses (mu or tau). Penalizing.")
+            return 1e9
+
+        sim_ratio = mass_tau / mass_mu
+        tgt_ratio = float(target["tau_to_muon_mass_ratio"])
+
+        if ctx.use_log_error:
+            err = (np.log(sim_ratio) - np.log(tgt_ratio)) ** 2
+        else:
+            err = (sim_ratio - tgt_ratio) ** 2
+
+        logger.info(f"Integrated masses: mu={mass_mu:.6g}, tau={mass_tau:.6g} | tau/mu sim={sim_ratio:.6g} tgt={tgt_ratio:.6g} -> err={err:.6g}")
+        return float(err)
+
+    elif mode == "min_ratio":
+        # Legacy: use minima in valleys & explicit electron baseline
+        # Expect DataFrame with columns: 'winding_number', 'final_energy', 'mass'
+        if not {"winding_number", "final_energy", "mass"}.issubset(results_df.columns):
+            logger.warning("Results missing required columns for min_ratio. Penalizing.")
+            return 1e9
+
+        # electron (baseline)
+        m_e_series = results_df.loc[results_df["winding_number"] == 1.0, "mass"]
+        if m_e_series.empty:
+            logger.warning("No N_w=1 mass found. Penalizing.")
+            return 1e9
+        m_e = float(m_e_series.iloc[0])
+
+        # muon valley (heuristic range)
+        mu_min_e = _pick_valley_min(results_df, nw_min=10.0, nw_max=1000.0)
+        tau_min_e = _pick_valley_min(results_df, nw_min=1000.0, nw_max=None)
+
+        # convert minima in energy valley to mass via provided 'mass' column minima:
+        m_mu = float(results_df.loc[(results_df["winding_number"] > 10.0) & (results_df["winding_number"] < 1000.0), "mass"].min())
+        m_tau = float(results_df.loc[(results_df["winding_number"] > 1000.0), "mass"].min())
+
+        if any(x <= 0 for x in (m_e, m_mu, m_tau)):
+            logger.warning(f"Non-positive masses encountered: me={m_e}, mmu={m_mu}, mtau={m_tau}. Penalizing.")
+            return 1e3 + 1e3 * abs(min(m_e, m_mu, m_tau))
+
+        sim_mu_e = m_mu / m_e
+        sim_tau_e = m_tau / m_e
+
+        tgt_mu_e = float(target["muon_to_electron_mass_ratio"])
+        tgt_tau_e = float(target["tau_to_electron_mass_ratio"])
+
+        if ctx.use_log_error:
+            e_mu = (np.log(sim_mu_e) - np.log(tgt_mu_e)) ** 2
+            e_tau = (np.log(sim_tau_e) - np.log(tgt_tau_e)) ** 2
+        else:
+            e_mu = (sim_mu_e - tgt_mu_e) ** 2
+            e_tau = (sim_tau_e - tgt_tau_e) ** 2
+
+        err = float(e_mu + e_tau)
+        logger.info(f"Min-ratio masses: me={m_e:.6g}, mmu={m_mu:.6g}, mtau={m_tau:.6g} | mu/e={sim_mu_e:.6g} (tgt {tgt_mu_e:.6g}), tau/e={sim_tau_e:.6g} (tgt {tgt_tau_e:.6g}) -> err={err:.6g}")
+        return err
+
+    else:
+        logger.error(f"Unknown objective mode '{ctx.mode}'. Use 'integrated_ratio' or 'min_ratio'.")
+        return 1e12
+
+
+# ---------- Main CLI ----------
 
 def main():
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Run GEF Parameter Calibration Engine")
-    parser.add_argument('config_path', help='Path to the master calibration YAML file')
+    parser = argparse.ArgumentParser(description="Run GEF Parameter Calibration Engine (Unified)")
+    parser.add_argument("config_path", help="Path to the master calibration YAML file")
     args = parser.parse_args()
 
-    logger.info("--- Starting GEF Grand Fit Calibration ---")
+    logger.info("--- Starting GEF Grand Fit Calibration (Unified) ---")
 
-    # 1. Load the master calibration config
-    with open(args.config_path, 'r') as f:
+    # 1) Load config
+    with open(args.config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    # 2. Optional: perform a tiny warm-up run to JIT-compile kernels once
+    # Ensure output dir exists
+    Path(config["output_dir"]).mkdir(parents=True, exist_ok=True)
+
+    # 2) Warm-up run to JIT / allocate once (best effort)
     try:
-        warm_cfg = config.copy()
-        warm_cfg['nw_sweep_range'] = [1]
-        warm_cfg['relaxation_n_skip'] = int(config.get('relaxation_n_skip', 200))
-        warm_cfg['relaxation_n_iter'] = int(config.get('relaxation_n_iter', 256))
-        warm_cfg['processes'] = 1
-        warm_cfg['threads_per_process'] = int(config.get('threads_per_process', 1))
-        warm_cfg['quiet'] = True
-        warm_cfg['skip_plots'] = True
-        warm_cfg['skip_save'] = True
-        warm_cfg['record_series'] = False
-        MassSpectrumAnalyzer(warm_cfg).run_parallel_simulations()
+        warm_cfg = copy.deepcopy(config)
+        warm_cfg["nw_sweep_range"] = [1]
+        warm_cfg["relaxation_n_skip"] = int(config.get("relaxation_n_skip", 200))
+        warm_cfg["relaxation_n_iter"] = int(config.get("relaxation_n_iter", 256))
+        warm_cfg["processes"] = 1
+        warm_cfg["threads_per_process"] = int(config.get("threads_per_process", 1))
+        warm_cfg["quiet"] = True
+        warm_cfg["skip_plots"] = True
+        warm_cfg["skip_save"] = True
+        warm_cfg["record_series"] = False
+        _run_analyzer(warm_cfg)
+        logger.debug("Warm-up run completed.")
     except Exception:
+        # Warm-up is optional; ignore failures
         pass
 
-    # 3. Prepare for optimization
-    opt_params = config['optimization_params']
-    initial_guess = [p['initial'] for p in opt_params['parameter_info']]
-    bounds = [(p['min'], p['max']) for p in opt_params['parameter_info']]
+    # 3) Prepare optimization inputs
+    opt_cfg = config["optimization_params"]
+    specs = _build_param_specs(opt_cfg)
+    initial = [p.initial for p in specs]
+    bounds = [p.bounds for p in specs]
 
-    # 4. Run the optimizer!
-    result = minimize(
-        fun=objective_function,
-        x0=initial_guess,
-        args=(config,),
-        method='L-BFGS-B', # A good choice for bound-constrained problems
-        bounds=bounds,
-        options={'disp': True, 'maxiter': opt_params.get('max_iterations', 50)}
+    obj_cfg = config.get("objective", {})
+    mode = obj_cfg.get("mode", "integrated_ratio")
+    use_log = bool(obj_cfg.get("use_log_error", True))
+
+    ctx = ObjectiveContext(
+        base_config=config,
+        param_specs=specs,
+        mode=mode,
+        use_log_error=use_log,
     )
 
-    # 5. Process and save the final results
+    # 4) Optimize
+    result = minimize(
+        fun=_objective,
+        x0=np.asarray(initial, dtype=float),
+        args=(ctx,),
+        method="L-BFGS-B",
+        bounds=bounds,
+        options={"disp": True, "maxiter": int(opt_cfg.get("max_iterations", 50))},
+    )
+
+    # 5) Report & save best params
     logger.info("--- Calibration Finished ---")
     logger.info(f"Success: {result.success}")
     logger.info(f"Message: {result.message}")
-    logger.info(f"Final Error (fun): {result.fun:.8f}")
-    
-    best_params = result.x
-    logger.info("Best-fit parameters found:")
-    for i, p_info in enumerate(opt_params['parameter_info']):
-        logger.info(f"  {p_info['name']}: {best_params[i]:.6f}")
+    logger.info(f"Final Error (fun): {result.fun:.8g}")
 
-    # 6. Save the "Golden" configuration file
-    golden_config = config.copy()
-    golden_config['resonance_parameters']['peaks'][0]['amplitude'] = best_params[0]
-    golden_config['resonance_parameters']['peaks'][0]['sigma'] = best_params[1]
-    golden_config['resonance_parameters']['peaks'][1]['amplitude'] = best_params[2]
-    golden_config['resonance_parameters']['peaks'][1]['sigma'] = best_params[3]
-    
-    output_dir = Path(config['output_dir'])
-    golden_config_path = output_dir / "golden_config_leptons.yml"
-    with open(golden_config_path, 'w') as f:
-        yaml.dump(golden_config, f, sort_keys=False)
-    logger.info(f"Golden configuration saved to: {golden_config_path}")
+    best = result.x
+    for i, spec in enumerate(specs):
+        logger.info(f"  {spec.name}: {best[i]:.9g}")
 
-    # 7. Run the final, high-resolution analysis with the best parameters
+    # 6) Golden config
+    golden = copy.deepcopy(config)
+    _apply_params_to_config(golden, specs, best)
+
+    out_dir = Path(config["output_dir"])
+    golden_path = out_dir / ("golden_config_leptons.yml" if mode == "min_ratio" else "golden_config_leptons_integrated.yml")
+    with open(golden_path, "w") as f:
+        yaml.dump(golden, f, sort_keys=False)
+    logger.info(f"Golden configuration saved to: {golden_path}")
+
+    # 7) Final high-res analysis w/ best params
     logger.info("Running final high-resolution analysis with best-fit parameters...")
-    # Force sequential for the final high-res run as well (safe default)
-    golden_config['processes'] = 1
-    golden_config['threads_per_process'] = int(config.get('threads_per_process', 1))
-    final_analyzer = MassSpectrumAnalyzer(golden_config)
-    _, _, plot_path = final_analyzer.run_full_analysis()
-    logger.info(f"Final 'Money Plot' saved to {plot_path}")
+    golden["processes"] = 1
+    golden["threads_per_process"] = int(config.get("threads_per_process", 1))
+    try:
+        df_final, _, money_plot = _run_analyzer(golden)
+        if money_plot:
+            logger.info(f"Final 'Money Plot' saved to {money_plot}")
+        else:
+            logger.info("Final analysis complete (no plot path returned).")
+    except Exception as e:
+        logger.error(f"Final analysis failed: {e}")
+
     logger.info("--- Calibration Complete ---")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
