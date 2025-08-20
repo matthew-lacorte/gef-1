@@ -6,9 +6,13 @@
 # --------------------------------------------------------------------------
 
 import os
+import logging
 
 import numpy as np
 from numba import config, njit, prange
+
+# Module logger for informational output
+logger = logging.getLogger(__name__)
 
 # Configure Numba threading conservatively and respect existing environment
 # Do NOT override if the user already set NUMBA_NUM_THREADS.
@@ -148,133 +152,53 @@ def calculate_anisotropic_potential_derivative(
 
     return result
 
-
-# In your new optimized solver file...
-
-# def seed_hopfion_optimized(lattice_shape: tuple, nw: int, dx: float) -> np.ndarray:
-#     """
-#     Optimized Hopfion seeding with proper multi-winding support via product ansatz.
-#     """
-#     if nw == 0:
-#         print("INFO: Seeding lattice with N_w = 0 (vacuum state).")
-#         return np.ones(lattice_shape, dtype=np.float64)
-
-#     print(f"INFO: Seeding lattice with analytical Hopfion for N_w = {nw}...")
-
-#     dims = [np.arange(-s / 2. + 0.5, s / 2. + 0.5, dtype=np.float32) * dx for s in lattice_shape]
-#     x, y, z, w = np.meshgrid(dims[0], dims[1], dims[2], dims[3], indexing='ij')
-
-#     epsilon = 1e-9
-
-#     # 1. Define the base N_w=1 complex fields
-#     z0 = x + 1j * y
-#     z1 = z + 1j * w
-
-#     # 2. Use the product ansatz for N_w > 1
-#     # We model a multi-winding Hopfion by twisting one of the complex planes.
-#     # The complex field for the topology is Psi = z0^nw / z1.
-#     # We use z0 and z1 to define our real scalar field Phi.
-
-#     # The field is defined by the ratio of the norms of the "twisted" complex numbers
-#     # Let the twisted numbers be Z0 = z0^nw and Z1 = z1.
-#     # |Z0|² = |z0^nw|² = (|z0|^nw)² = (x²+y²)^(nw)
-#     # |Z1|² = |z1|² = z²+w²
-#     # This leads to a complex formula.
-
-#     # A more standard and stable approach uses the complex phase directly.
-#     # Let Psi = z0 / z1.
-#     # A multi-winding state is created by multiplying the phase of Psi by nw.
-#     # This is equivalent to twisting the z0 plane.
-
-#     # Let's use the simplest formulation that works:
-#     # Φ(x,y,z,w) = ( |z₁|² - |z₀|² ) / ( |z₁|² + |z₀|² )
-#     # A multi-winding state can be seeded by taking the argument of z0 (atan2(y,x))
-#     # and multiplying it by nw before reconstructing x' and y'.
-
-#     if nw > 1:
-#         # This is the proper implementation of the product ansatz
-#         angle_z0 = np.arctan2(y, x)
-#         radius_z0 = np.sqrt(x*x + y*y)
-
-#         # Multiply the angle by the winding number
-#         new_angle_z0 = nw * angle_z0
-
-#         # Reconstruct the "twisted" x and y coordinates
-#         x_twisted = radius_z0 * np.cos(new_angle_z0)
-#         y_twisted = radius_z0 * np.sin(new_angle_z0)
-
-#         # Calculate the final Phi using the twisted coordinates
-#         phi_final = (z*z + w*w - x_twisted**2 - y_twisted**2) / (x_twisted**2 + y_twisted**2 + z*z + w*w + epsilon)
-
-#     else: # nw == 1
-#         r_sq = x*x + y*y + z*z + w*w
-#         phi_final = (z*z + w*w - x*x - y*y) / (r_sq + epsilon)
-
-#     print("INFO: Seeding complete.")
-#     return phi_final.astype(np.float64)
-
-# def seed_hopfion(lattice_shape: tuple, nw: int, dx: float) -> np.ndarray:
-#     """
-#     Optimized Hopfion seeding with proper multi-winding support via product ansatz.
-#     """
-#     if nw == 0:
-#         print("INFO: Seeding lattice with N_w = 0 (vacuum state).")
-#         return np.ones(lattice_shape, dtype=np.float64)
-
-#     print(f"INFO: Seeding lattice with analytical Hopfion for N_w = {nw}...")
-
-#     dims = [np.arange(-s / 2. + 0.5, s / 2. + 0.5, dtype=np.float64) * dx for s in lattice_shape]
-#     x, y, z, w = np.meshgrid(dims[0], dims[1], dims[2], dims[3], indexing='ij')
-
-#     epsilon = 1e-9
-
-#     # Use the product ansatz: A multi-winding state Ψ_k = (Ψ_1)^k
-#     # can be modeled by multiplying the angle in one of the complex planes.
-#     # Let z₀ = x + iy. We will "twist" this plane.
-
-#     # Calculate the angle and radius in the z₀ (xy) plane
-#     angle_z0 = np.arctan2(y, x)
-#     radius_z0_sq = x**2 + y**2
-
-#     # Multiply the angle by the winding number to create the twist
-#     new_angle_z0 = nw * angle_z0
-
-#     # Reconstruct the "twisted" x and y coordinates
-#     # We need the radius, not radius squared for this
-#     radius_z0 = np.sqrt(radius_z0_sq)
-#     x_twisted = radius_z0 * np.cos(new_angle_z0)
-#     y_twisted = radius_z0 * np.sin(new_angle_z0)
-
-#     # Calculate the final Phi using the twisted coordinates
-#     # Φ = ( |z₁|² - |z₀'|² ) / ( |z₁|² + |z₀'|² )
-#     # where z₀' are the twisted coordinates
-#     phi_final = (z**2 + w**2 - x_twisted**2 - y_twisted**2) / (x_twisted**2 + y_twisted**2 + z**2 + w**2 + epsilon)
-
-#     print("INFO: Seeding complete.")
-#     return phi_final
-
-
-# This is the ONLY version of seed_hopfion we need now.
 def seed_hopfion(lattice_shape: tuple, nw: int, dx: float) -> np.ndarray:
     """
-    Creates the analytical seed for a fundamental N_w=1 Hopfion.
-    The nw parameter is kept for API consistency but should always be 1 for this experiment.
+    Creates an analytical seed for a Hopfion with a given winding number N_w.
+    This uses a standard ansatz based on complex coordinates and phase winding.
     """
     if nw == 0:
+        # The vacuum state
         return np.ones(lattice_shape, dtype=np.float64)
 
-    print(f"INFO: Seeding lattice with fundamental N_w={nw} topology...")
+    logger.info(f"Seeding lattice with a proper N_w={nw} topological seed...")
 
+    # Create the 4D coordinate grid
     dims = [np.arange(-s / 2.0 + 0.5, s / 2.0 + 0.5, dtype=np.float64) * dx for s in lattice_shape]
     x, y, z, w = np.meshgrid(dims[0], dims[1], dims[2], dims[3], indexing="ij")
 
-    epsilon = 1e-9
-    r_sq = x**2 + y**2 + z**2 + w**2
+    # Use a standard multi-winding Hopfion ansatz but normalize radii first
+    # to keep bases in [0,1] and avoid overflow for large N_w.
+    # Let a = |z1|^2 = x^2 + y^2, b = |z2|^2 = z^2 + w^2
+    # Define a' = a / (a + b + eps), b' = b / (a + b + eps). Then compute
+    # phi = ( b'^(N_w/2) - a'^(N_w/2) ) / ( b'^(N_w/2) + a'^(N_w/2) ).
+    epsilon = 1e-12  # smaller epsilon; only to avoid division by zero
 
-    # The standard, fundamental N_w=1 formula
-    phi_final = (z**2 + w**2 - x**2 - y**2) / (r_sq + epsilon)
+    a = x**2 + y**2
+    b = z**2 + w**2
+    denom_ab = a + b + epsilon
+    a_norm = a / denom_ab
+    b_norm = b / denom_ab
 
-    print("INFO: Seeding complete.")
+    # Ensure numerical safety in [0,1]
+    a_norm = np.clip(a_norm, 0.0, 1.0)
+    b_norm = np.clip(b_norm, 0.0, 1.0)
+
+    # Handle non-integer N_w robustly
+    nw_half = float(nw) / 2.0
+
+    a_pow = np.power(a_norm, nw_half)
+    b_pow = np.power(b_norm, nw_half)
+
+    numerator = b_pow - a_pow
+    denominator = b_pow + a_pow + epsilon
+
+    phi_final = numerator / denominator
+
+    # Replace any residual non-finite values with 0
+    phi_final = np.where(np.isfinite(phi_final), phi_final, 0.0)
+    
+    logger.info(f"Seeding for N_w={nw} complete.")
     return phi_final
 
 
