@@ -233,7 +233,6 @@ def main():
     parser.add_argument('config_path', help='Path to the master calibration YAML file')
     args = parser.parse_args()
 
-    logger = get_logger(__name__)
     logger.info("--- Starting GEF Grand Fit Calibration ---")
 
     # 1. Load the master calibration config
