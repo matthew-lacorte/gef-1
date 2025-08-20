@@ -28,17 +28,18 @@ project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-
-# --- Lightweight logger setup ---
-def setup_logger(name: str) -> logging.Logger:
-    logger = logging.getLogger(name)
+# --- Package logger (Loguru) ---
+try:
+    from gef.core.logging import logger  # type: ignore
+except Exception:
+    # Fallback to stdlib logger if package logger unavailable
+    logger = logging.getLogger(__name__)
     if not logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
-    return logger
 
 
 # --- Load MassSpectrumAnalyzer from sibling script robustly ---
@@ -62,8 +63,7 @@ def objective_function(params: np.ndarray, base_config: dict) -> float:
     and returns a single "error" value indicating how far the simulation's
     results are from the real-world target values.
     """
-    logger = logging.getLogger(__name__)
-    
+    # Use package logger
     # 1. Create a temporary config for this specific simulation run
     temp_config = base_config.copy()
     
@@ -84,17 +84,28 @@ def objective_function(params: np.ndarray, base_config: dict) -> float:
     logger.info(f"  Muon Amp: {params[0]:.4f}, Muon Sigma: {params[1]:.4f}")
     logger.info(f"  Tau Amp:  {params[2]:.4f}, Tau Sigma:  {params[3]:.4f}")
 
-    # 3. Run the full mass spectrum analysis with these new parameters
-    #    We create a temporary, non-timestamped directory for each trial run.
-    temp_config['output_dir'] = Path(base_config['output_dir']) / "_temp_optimizer_run"
+    # 3. Run simulations only (no plotting/saving) to speed up optimization
+    #    Create a unique subdir for each trial so CSVs accumulate for inspection.
+    import datetime as _dt
+    trial_stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    temp_config['output_dir'] = Path(base_config['output_dir']) / "_temp_optimizer_run" / trial_stamp
     # Avoid multiprocessing pickling issues under dynamic import by forcing sequential
     temp_config['processes'] = 1
     # Allow thread-level parallelism
     temp_config['threads_per_process'] = int(base_config.get('threads_per_process', 1))
+    # Quiet mode and skip heavy I/O during optimization (but DO save CSVs)
+    temp_config['quiet'] = True
+    temp_config['skip_plots'] = True
+    temp_config['skip_save'] = False
+    temp_config['record_series'] = False
     
     try:
         analyzer = MassSpectrumAnalyzer(temp_config)
-        results_df, _, _ = analyzer.run_full_analysis()
+        results_df = analyzer.run_parallel_simulations()
+        # Write CSVs during optimization if not skipped
+        csv_path = None
+        if not temp_config.get('skip_save', False):
+            csv_path = analyzer.save_results(results_df)
     except Exception as e:
         logger.error(f"A simulation run failed during optimization: {e}")
         return 1e12 # Return a huge error value if the simulation crashes
@@ -193,9 +204,23 @@ def objective_function(params: np.ndarray, base_config: dict) -> float:
     
     total_error = error_mu + error_tau
     
-    logger.info(f"Sim Ratios: mu/e={simulated_mu_e_ratio:.2f}, tau/e={simulated_tau_e_ratio:.2f}")
-    logger.info(f"Target Ratios: mu/e={target_mu_e_ratio:.2f}, tau/e={target_tau_e_ratio:.2f}")
-    logger.info(f"Current Total Error: {total_error:.6f}")
+    # Emit a concise summary for each trial regardless of quiet flag
+    try:
+        summary = {
+            "csv": str(csv_path) if csv_path else "<skip_save>",
+            "sea_energy": float(sea_energy),
+            "min_muon_energy": float(min_muon_energy),
+            "min_tau_energy": float(min_tau_energy),
+            "m_e": float(m_e),
+            "m_mu": float(m_mu),
+            "m_tau": float(m_tau),
+            "mu/e": float(simulated_mu_e_ratio),
+            "tau/e": float(simulated_tau_e_ratio),
+            "error": float(total_error),
+        }
+        logger.info(f"Trial results: {summary}")
+    except Exception:
+        pass
     
     return total_error
 
@@ -208,19 +233,35 @@ def main():
     parser.add_argument('config_path', help='Path to the master calibration YAML file')
     args = parser.parse_args()
 
-    logger = setup_logger(__name__)
+    logger = get_logger(__name__)
     logger.info("--- Starting GEF Grand Fit Calibration ---")
 
     # 1. Load the master calibration config
     with open(args.config_path, 'r') as f:
         config = yaml.safe_load(f)
 
-    # 2. Prepare for optimization
+    # 2. Optional: perform a tiny warm-up run to JIT-compile kernels once
+    try:
+        warm_cfg = config.copy()
+        warm_cfg['nw_sweep_range'] = [1]
+        warm_cfg['relaxation_n_skip'] = int(config.get('relaxation_n_skip', 200))
+        warm_cfg['relaxation_n_iter'] = int(config.get('relaxation_n_iter', 256))
+        warm_cfg['processes'] = 1
+        warm_cfg['threads_per_process'] = int(config.get('threads_per_process', 1))
+        warm_cfg['quiet'] = True
+        warm_cfg['skip_plots'] = True
+        warm_cfg['skip_save'] = True
+        warm_cfg['record_series'] = False
+        MassSpectrumAnalyzer(warm_cfg).run_parallel_simulations()
+    except Exception:
+        pass
+
+    # 3. Prepare for optimization
     opt_params = config['optimization_params']
     initial_guess = [p['initial'] for p in opt_params['parameter_info']]
     bounds = [(p['min'], p['max']) for p in opt_params['parameter_info']]
 
-    # 3. Run the optimizer!
+    # 4. Run the optimizer!
     result = minimize(
         fun=objective_function,
         x0=initial_guess,
@@ -230,7 +271,7 @@ def main():
         options={'disp': True, 'maxiter': opt_params.get('max_iterations', 50)}
     )
 
-    # 4. Process and save the final results
+    # 5. Process and save the final results
     logger.info("--- Calibration Finished ---")
     logger.info(f"Success: {result.success}")
     logger.info(f"Message: {result.message}")
@@ -241,7 +282,7 @@ def main():
     for i, p_info in enumerate(opt_params['parameter_info']):
         logger.info(f"  {p_info['name']}: {best_params[i]:.6f}")
 
-    # 5. Save the "Golden" configuration file
+    # 6. Save the "Golden" configuration file
     golden_config = config.copy()
     golden_config['resonance_parameters']['peaks'][0]['amplitude'] = best_params[0]
     golden_config['resonance_parameters']['peaks'][0]['sigma'] = best_params[1]
@@ -254,7 +295,7 @@ def main():
         yaml.dump(golden_config, f, sort_keys=False)
     logger.info(f"Golden configuration saved to: {golden_config_path}")
 
-    # 6. Run the final, high-resolution analysis with the best parameters
+    # 7. Run the final, high-resolution analysis with the best parameters
     logger.info("Running final high-resolution analysis with best-fit parameters...")
     # Force sequential for the final high-res run as well (safe default)
     golden_config['processes'] = 1

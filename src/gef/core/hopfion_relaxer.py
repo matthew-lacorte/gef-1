@@ -434,6 +434,7 @@ class HopfionRelaxer:
         n_skip: int = 5000,
         n_iter: int = 4096,
         probe_point: tuple = None,
+        record_series: bool = True,
     ):
         """
         Runs the relaxation to find a stable limit cycle.
@@ -444,9 +445,9 @@ class HopfionRelaxer:
             probe_point (tuple): The (i, j, k, l) coordinate to monitor.
 
         Returns:
-            tuple: (phi_series, final_energy)
-                - phi_series: Time series of the phi value at the probe point.
-                - final_energy: The final, stable total energy of the system.
+        tuple: (phi_series, final_energy)
+            - phi_series: Time series at the probe point (or None if record_series=False)
+            - final_energy: The final, stable total energy of the system.
         """
         if probe_point is None:
             # Choose a point off-center to be sensitive to oscillations
@@ -457,23 +458,27 @@ class HopfionRelaxer:
                 self.lattice_shape[3] // 4,
             )
 
-        # --- Transient Phase (let the system settle) ---
+        # Prepare reusable buffers
+        lap_buf = np.zeros_like(self.phi)
+
+        # Transient phase to skip initial dynamics
         for _ in range(n_skip):
-            force = calculate_laplacian_4d(self.phi, self.dx) - calculate_full_potential_derivative(
+            force = calculate_laplacian_4d(self.phi, self.dx, out=lap_buf) - calculate_full_potential_derivative(
                 self.phi, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq, self.dx
             )
             self.velocity_buffer = (self.friction * self.velocity_buffer) + (self.dt * force)
             self.phi += self.velocity_buffer
 
         # --- Measurement Phase (record the orbit) ---
-        phi_series = np.zeros(n_iter, dtype=np.float64)
+        phi_series = None if not record_series else np.zeros(n_iter, dtype=np.float64)
         for i in range(n_iter):
-            force = calculate_laplacian_4d(self.phi, self.dx) - calculate_full_potential_derivative(
+            force = calculate_laplacian_4d(self.phi, self.dx, out=lap_buf) - calculate_full_potential_derivative(
                 self.phi, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq, self.dx
             )
             self.velocity_buffer = (self.friction * self.velocity_buffer) + (self.dt * force)
             self.phi += self.velocity_buffer
-            phi_series[i] = self.phi[probe_point]
+            if record_series:
+                phi_series[i] = self.phi[probe_point]
 
         final_energy = calculate_full_total_energy(
             self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq

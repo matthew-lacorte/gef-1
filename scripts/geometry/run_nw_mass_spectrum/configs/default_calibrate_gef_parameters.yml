@@ -70,6 +70,12 @@ early_exit_energy_threshold: 1000.0
 friction: 0.95
 vacuum_energy: 0.0 # Should be pre-calculated for these physics params
 
+processes: 1
+threads_per_process: 4
+numba_threading_layer: tbb
+relaxation_n_iter: 256
+relaxation_n_skip: 500
+
 # --- Sweep Configuration (for each trial run) ---
 # Use a sparse "locator" sweep to be fast during optimization.
 nw_sweep_range:
@@ -95,3 +101,5 @@ nw_sweep_range:
   - 3550
   # A final point to ensure the sea level
   - 4000
+
+  

@@ -72,17 +72,16 @@ try:
 except Exception:
     pass
 try:
-    from gef.utils.logging_utils import setup_logger  # type: ignore
+    from gef.core.logging import logger  # type: ignore
 except Exception:
-    def setup_logger(name: str) -> logging.Logger:
-        logger = logging.getLogger(name)
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-            logger.setLevel(logging.INFO)
-        return logger
+    # Fallback stdlib logger
+    logger = logging.getLogger(__name__)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
 try:
     from gef.visualization.spectrum_plots import MassSpectrumPlotter  # type: ignore
 except Exception:
@@ -133,13 +132,16 @@ class SimulationWorker:
         Returns:
             Dictionary containing simulation results
         """
-        logger = logging.getLogger(__name__)
+        # Use package logger
+        _log = logger
+        quiet = bool(base_config.get('quiet', False))
         
         # Calculate effective coupling for this winding number
         resonance_params = base_config['resonance_parameters']
         g_eff_sq = ResonanceModel.calculate_g_eff_squared(nw, resonance_params)
         
-        logger.info(f"Starting simulation for N_w={nw}, g_eff²={g_eff_sq:.4f}")
+        if not quiet:
+            logger.info(f"Starting simulation for N_w={nw}, g_eff²={g_eff_sq:.4f}")
         
         # Create configuration for this specific run
         current_config = base_config.copy()
@@ -155,14 +157,21 @@ class SimulationWorker:
             n_iter = int(base_config.get('relaxation_n_iter', 1024))
 
             t0 = datetime.datetime.now()
-            phi_series, final_energy = solver.run_relaxation(n_skip=n_skip, n_iter=n_iter)
+            record_series = bool(base_config.get('record_series', True))
+            phi_series, final_energy = solver.run_relaxation(
+                n_skip=n_skip,
+                n_iter=n_iter,
+                record_series=record_series,
+            )
             dt = (datetime.datetime.now() - t0).total_seconds()
-            logger.info(f"Finished N_w={nw} in {dt:.1f}s; E_final={final_energy}")
+            if not quiet:
+                logger.info(f"Finished N_w={nw} in {dt:.1f}s; E_final={final_energy}")
             converged = bool(np.isfinite(final_energy))
 
             # Validate results
             if not converged:
-                logger.warning(f"Simulation for N_w={nw} produced invalid energy")
+                if not quiet:
+                    logger.warning(f"Simulation for N_w={nw} produced invalid energy")
                 final_energy = np.nan
                 
         except Exception as e:
@@ -188,7 +197,7 @@ class MassSpectrumAnalyzer:
         Args:
             config_or_path: Either a path to a YAML config file, or a dict config
         """
-        self.logger = setup_logger(__name__)
+        self.logger = logger
 
         # Accept either a dict or a path-like
         if isinstance(config_or_path, dict):
@@ -200,6 +209,7 @@ class MassSpectrumAnalyzer:
         
         # Setup output directory
         self.output_dir = self._setup_output_directory()
+        self.quiet = bool(self.config.get('quiet', False))
         
     def _load_and_validate_config(self) -> Dict:
         """Load and validate configuration file."""
@@ -223,7 +233,8 @@ class MassSpectrumAnalyzer:
         output_dir = Path(self.config['output_dir']) / output_dir_name
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        self.logger.info(f"Output directory created: {output_dir}")
+        if not self.config.get('quiet', False):
+            self.logger.info(f"Output directory created: {output_dir}")
         return output_dir
         
     def run_parallel_simulations(self) -> pd.DataFrame:
@@ -237,9 +248,14 @@ class MassSpectrumAnalyzer:
         # Allow user to cap process count to avoid oversubscription with Numba threads
         requested = int(self.config.get('processes', 0))
         if requested > 0:
-            num_cores = requested
+            num_cores = int(requested)
         else:
-            num_cores = max(1, min(2, multiprocessing.cpu_count() - 1))
+            # Conservative default to prevent oversubscription
+            try:
+                cpu_cnt = multiprocessing.cpu_count()
+            except Exception:
+                cpu_cnt = 2
+            num_cores = max(1, min(2, int(cpu_cnt) - 1))
         
         # Configure per-process Numba threads via environment so children inherit it
         threads_per_proc = int(self.config.get('threads_per_process', 0))
@@ -250,8 +266,12 @@ class MassSpectrumAnalyzer:
         if threading_layer:
             os.environ['NUMBA_THREADING_LAYER'] = threading_layer
 
-        self.logger.info(f"Running simulations for N_w values: {nw_values}")
-        self.logger.info(f"Using {num_cores} parallel processes; NUMBA_NUM_THREADS={os.environ.get('NUMBA_NUM_THREADS','')} layer={os.environ.get('NUMBA_THREADING_LAYER','')} ")
+        if not self.config.get('quiet', False):
+            self.logger.info(f"Running simulations for N_w values: {nw_values}")
+        numba_threads = os.environ.get('NUMBA_NUM_THREADS', '')
+        numba_layer = os.environ.get('NUMBA_THREADING_LAYER', '')
+        if not self.config.get('quiet', False):
+            self.logger.info(f"Using {num_cores} process(es); NUMBA_NUM_THREADS={numba_threads} layer={numba_layer}")
         
         # Build worker function
         worker_func = partial(
@@ -280,8 +300,9 @@ class MassSpectrumAnalyzer:
         csv_path = self.output_dir / 'mass_spectrum_results.csv'
         results_df.to_csv(csv_path, index=False)
         
-        self.logger.info(f"Results saved to: {csv_path}")
-        self.logger.info(f"Results summary:\n{results_df}")
+        if not self.config.get('quiet', False):
+            self.logger.info(f"Results saved to: {csv_path}")
+            self.logger.info(f"Results summary:\n{results_df}")
         
         return csv_path
         
@@ -290,7 +311,8 @@ class MassSpectrumAnalyzer:
         plotter = MassSpectrumPlotter(self.config)
         plot_path = plotter.create_spectrum_plot(results_df, self.output_dir)
         
-        self.logger.info(f"Plot saved to: {plot_path}")
+        if not self.config.get('quiet', False):
+            self.logger.info(f"Plot saved to: {plot_path}")
         return plot_path
         
     def run_full_analysis(self) -> Tuple[pd.DataFrame, Path, Path]:
@@ -305,11 +327,17 @@ class MassSpectrumAnalyzer:
         # Run simulations
         results_df = self.run_parallel_simulations()
         
-        # Save results
-        csv_path = self.save_results(results_df)
+        # Save results if not skipped
+        if bool(self.config.get('skip_save', False)):
+            csv_path = self.output_dir / 'mass_spectrum_results.csv'
+        else:
+            csv_path = self.save_results(results_df)
         
-        # Generate plots
-        plot_path = self.generate_plots(results_df)
+        # Generate plots if not skipped
+        if bool(self.config.get('skip_plots', False)):
+            plot_path = self.output_dir / 'mass_vs_nw_spectrum.png'
+        else:
+            plot_path = self.generate_plots(results_df)
         
         self.logger.info("Analysis complete")
         
@@ -474,20 +502,7 @@ class MassSpectrumPlotter:
         return plot_path
 
 
-def setup_logger(name: str) -> logging.Logger:
-    """Setup logger for the module."""
-    logger = logging.getLogger(name)
-    
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-    
-    return logger
+# (Local setup_logger removed in favor of package get_logger)
 
 
 def main():
@@ -510,8 +525,7 @@ def main():
     
     args = parser.parse_args()
     
-    # Setup logging
-    logging.basicConfig(level=getattr(logging, args.log_level))
+    # Note: gef.core.logging (loguru) manages console logging; respecting --log-level is TODO
     
     try:
         # Run analysis
