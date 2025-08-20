@@ -104,12 +104,17 @@ class ResonanceModel:
             Effective g_squared value for the given winding number
         """
         g_base_sq = resonance_params['g_base_squared']
-        
+        invert_amplitudes = resonance_params.get('invert_amplitudes', False)
+
         g_hook_sq = 0.0
         for peak in resonance_params['peaks']:
             center = peak['center']
             amplitude = peak['amplitude']
             sigma = peak['sigma']
+
+            # If the experimental flag is set, invert the amplitude
+            if invert_amplitudes:
+                amplitude *= -1.0
             
             # Gaussian resonance peak
             g_hook_sq += amplitude * np.exp(-(nw - center)**2 / (2 * sigma**2))
