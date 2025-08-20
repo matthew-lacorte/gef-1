@@ -250,12 +250,12 @@ class MassSpectrumAnalyzer:
         if requested > 0:
             num_cores = int(requested)
         else:
-            # Conservative default to prevent oversubscription
+            # If not specified, use all available cores minus one for safety
             try:
                 cpu_cnt = multiprocessing.cpu_count()
             except Exception:
                 cpu_cnt = 2
-            num_cores = max(1, min(2, int(cpu_cnt) - 1))
+            num_cores = max(1, cpu_cnt - 1)
         
         # Configure per-process Numba threads via environment so children inherit it
         threads_per_proc = int(self.config.get('threads_per_process', 0))

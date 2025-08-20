@@ -17,6 +17,7 @@ h_squared: 0.0           # (h²) Hook coupling. Set to 0 for single-particle sta
 # The effective g_squared is NOT a constant, but a function of N_w.
 resonance_parameters:
   g_base_squared: 0.1    # A small, baseline stability factor for all N_w.
+  invert_amplitudes: false # If true, inverts the sign of peak amplitudes. For experimental use.
   
   # A list of resonance peaks. Each peak represents a potentially stable generation.
   # peaks:
@@ -34,10 +35,10 @@ resonance_parameters:
 
   peaks:
   - center: 207
-    amplitude: -2.6 # Was positive, now negative
+    amplitude: 2.6
     sigma: 2.0
   - center: 3477
-    amplitude: -1.1 # Was positive, now negative
+    amplitude: 1.1
     sigma: 10.0
 
 # --- Simulation Grid & Solver Parameters ---

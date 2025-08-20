@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from scipy.optimize import minimize
-from scipy.integrate import simps
+from scipy.integrate import simpson
 
 # --- Add project root to path for robust imports (optional & safe) ---
 project_root = Path(__file__).resolve().parents[2]  # up two (e.g., .../gef)
@@ -214,7 +214,7 @@ def _calculate_integrated_mass(
     energy_deficit = sea_level_energy - peak_df["final_energy"].to_numpy()
     energy_deficit = np.where(energy_deficit > 0.0, energy_deficit, 0.0)
 
-    integrated = simps(energy_deficit, peak_df["winding_number"].to_numpy())
+    integrated = simpson(energy_deficit, peak_df["winding_number"].to_numpy())
     return float(integrated if integrated > 0 else 0.0)
 
 

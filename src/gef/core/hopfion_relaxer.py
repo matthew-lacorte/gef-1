@@ -263,7 +263,7 @@ def seed_hopfion(lattice_shape: tuple, nw: int, dx: float) -> np.ndarray:
     if nw == 0:
         return np.ones(lattice_shape, dtype=np.float64)
 
-    print("INFO: Seeding lattice with fundamental N_w=1 topology...")
+    print(f"INFO: Seeding lattice with fundamental N_w={nw} topology...")
 
     dims = [np.arange(-s / 2.0 + 0.5, s / 2.0 + 0.5, dtype=np.float64) * dx for s in lattice_shape]
     x, y, z, w = np.meshgrid(dims[0], dims[1], dims[2], dims[3], indexing="ij")

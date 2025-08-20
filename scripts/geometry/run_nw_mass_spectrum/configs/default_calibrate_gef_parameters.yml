@@ -29,8 +29,8 @@ optimization_params:
   # Integration width factors (in units of sigma) for the mass calculation
   muon_integration_width_factor: 6.0
   tau_integration_width_factor: 6.0
-  # Save the CSV from every trial run? (can be slow)
-  save_csv_during_opt: false
+  # If true, saves a CSV for each optimizer step. Useful for debugging, but can be slow.
+  save_csv_during_opt: true
   parameter_info:
     - name: "muon_amplitude"
       initial: -2.5
@@ -76,7 +76,7 @@ friction: 0.95
 vacuum_energy: 0.0 # Should be pre-calculated for these physics params
 
 processes: 1
-threads_per_process: 4
+threads_per_process: 6
 numba_threading_layer: tbb
 relaxation_n_iter: 256
 relaxation_n_skip: 500
@@ -86,6 +86,9 @@ relaxation_n_skip: 500
 nw_sweep_range:
   # Baseline points
   - 1
+  - 2
+  - 5
+  - 10
   - 50
   - 100
   # Dense scan across the entire Muon valley
