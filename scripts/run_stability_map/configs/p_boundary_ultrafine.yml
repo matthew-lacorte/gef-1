@@ -1,0 +1,52 @@
+description: "1D ultra-fine sweep across physical boundary (P_env) at fixed mu^2"
+
+# Where outputs go
+output_dir: ./data/sim_outputs/stability_map
+
+# Parallelism
+processes: 0                # 0 -> auto (n_cores - 1)
+threads_per_process: 2
+
+# Sweep axes — set P_env finely; keep mu_squared fixed via a 1-point second axis
+param1:
+  name: P_env
+  key: P_env
+  start: 0.30
+  stop: 0.90
+  num_points: 61           # 0.30 -> 0.90 with step 0.01
+  transform: linear
+
+param2:
+  name: mu_squared
+  key: mu_squared
+  start: 1.26
+  stop: 1.26
+  num_points: 1
+  transform: linear
+
+# Base solver config (anything not controlled by the two axes)
+solver:
+  lattice_size: [24, 24, 16, 16]
+  dx: 0.50
+  mu_squared: 1.26         # baseline; overridden by param2 (same value)
+  lambda_val: 2.0
+  P_env: 0.30              # baseline; overridden by param1 sweep
+  g_squared: 0.20
+  h_squared: 0.10
+  seed_topology: 1         # hopfion seed (nw=1)
+  max_iterations: 4000     # 2000–4000 iters per point as requested
+  clip_phi_to_unit: false
+  relaxation_n_skip: 0
+  relaxation_n_iter: 20000  
+
+
+# Scoring and diagnostics
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  score_ref_mass_density: 0.07
+  density_normalization: "4D"   # use full 4D volume for comparability
+
+# Notes:
+# - Current code logs phi_max, phi_rms, and energy breakdown; these appear in CSV for each point.
+# - To persist core_frac = Vol{|phi|<0.5} / total, a tiny code addition in _evaluate_point is needed.

@@ -170,6 +170,7 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
     lam = float(cfg["lambda_val"]) 
     dx  = float(cfg["dx"]) 
     shape_key = tuple(int(x) for x in cfg["lattice_size"])  # type: ignore
+    
 
     E0_num = np.nan
     if use_num_vac and converged:
@@ -249,6 +250,15 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
         "phi_rms": float(phi_rms) if 'phi_rms' in locals() else np.nan,
         "max_delta_phi": float(max_dphi) if 'max_dphi' in locals() else np.nan,
         "Lw": float(Lw) if 'Lw' in locals() else np.nan,
+        "phi_max": phi_max,
+        "phi_rms": phi_rms,
+        "core_frac": float(np.mean(np.abs(solver.phi) < 0.5)) if converged else 0.0,
+        "E_kin": float(breakdown.get("kinetic", np.nan)),
+        "E_iso": float(breakdown.get("iso", np.nan)),
+        "E_aniso": float(breakdown.get("aniso", np.nan)),
+        "E_hook": float(breakdown.get("hook", np.nan)),
+        "E_press": float(breakdown.get("pressure", np.nan)),
+
     }
 
 
