@@ -65,8 +65,11 @@ except Exception:  # pragma: no cover
     from hopfion_relaxer import HopfionRelaxer  # type: ignore
 
 # =============================================================================
-# Helpers: physics utilities
+# Helpers and caches
 # =============================================================================
+
+# tiny in-process cache for numeric vacuum energy E0
+VACUUM_CACHE: Dict[tuple, float] = {}
 
 def analytic_vacuum_energy(config: Dict) -> float:
     """Analytic vacuum energy for uniform field (grad terms vanish).
@@ -120,7 +123,7 @@ class AxisConfig:
 
 def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.ndarray,
                     base_cfg: Dict, axis1: AxisConfig, axis2: AxisConfig,
-                    mass_scale: float, energy_check_only: bool) -> Dict:
+                    scoring_cfg: Dict, vacuum_cache: Dict, energy_check_only: bool) -> Dict:
     i, j = i_j
     v1, v2 = float(ax1_vals[i]), float(ax2_vals[j])
 
@@ -136,20 +139,17 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
     # Build solver
     solver = HopfionRelaxer(cfg)
 
-    # Vacuum baseline
-    E_vac = analytic_vacuum_energy(cfg)
-
-    # Seed and initial energy
-    nw_seed = int(base_cfg.get("seed_nw", 1))
+    # Seed and initial energy (honor either seed_nw or seed_topology)
+    nw_seed = int(base_cfg.get("seed_topology", base_cfg.get("seed_nw", 1)))
     solver.initialize_field(nw=nw_seed)
     E0 = solver.compute_total_energy()
 
-    # Short relaxation (configurable)
-    n_skip = int(base_cfg.get("relaxation_n_skip", 500))
-    n_iter = int(base_cfg.get("relaxation_n_iter", 512))
+    # Iteration budget: opt-in overrides; otherwise use solver's internal max_iterations
+    n_skip = base_cfg.get("relaxation_n_skip")
+    n_iter = base_cfg.get("relaxation_n_iter")
     record_series = bool(base_cfg.get("record_series", False))
 
-    # Early-exit mode: optionally skip relaxation for a super-fast "curvature" probe
+    # Early-exit mode: optionally skip relaxation for a super-fast probe
     if energy_check_only:
         E_final = E0
         converged = False
@@ -159,15 +159,79 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
         if not converged:
             E_final = np.nan
 
-    # Mass & metric
-    mass = E_final - E_vac if np.isfinite(E_final) else np.nan
-    if np.isfinite(mass) and mass < 0:  # tiny negative due to numerics -> clamp
-        if _USING_LOGURU:
-            logger.debug(f"Clamping negative mass {mass:.3e} at ({v1}, {v2})")
-        mass = 0.0
+    # Numeric vacuum subtraction (E0_num): relax nw=0 with same params
+    use_num_vac = bool(scoring_cfg.get("use_numeric_vacuum", False))
+    cache_num_vac = bool(scoring_cfg.get("cache_numeric_vacuum", True))
 
-    metric = float(np.exp(-mass_scale * mass)) if np.isfinite(mass) else 0.0
-    metric = metric if converged else 0.0
+    mu2 = float(cfg["mu_squared"])     # for cache key
+    P   = float(cfg.get("P_env", 0.0))
+    g2  = float(cfg.get("g_squared", 0.0))
+    h2  = float(cfg.get("g_H_squared", cfg.get("h_squared", 0.0)))
+    lam = float(cfg["lambda_val"]) 
+    dx  = float(cfg["dx"]) 
+    shape_key = tuple(int(x) for x in cfg["lattice_size"])  # type: ignore
+
+    E0_num = np.nan
+    if use_num_vac and converged:
+        cache_key = (mu2, P, g2, h2, lam, dx, shape_key)
+        if cache_num_vac and cache_key in vacuum_cache:
+            E0_num = float(vacuum_cache[cache_key])
+        else:
+            cfg0 = dict(cfg)
+            solver0 = HopfionRelaxer(cfg0)
+            solver0.initialize_field(nw=0)
+            # seed exact uniform vacuum to avoid long slides / hook issues
+            try:
+                phi0 = float(np.sqrt(solver0._vacuum_phi0_sq()))
+            except Exception:
+                phi0 = 1.0
+            solver0.phi.fill(phi0)
+            _, E0_tmp = solver0.run_relaxation(n_skip=n_skip, n_iter=n_iter, record_series=False)
+            E0_num = float(E0_tmp) if np.isfinite(E0_tmp) else np.nan
+            if cache_num_vac and np.isfinite(E0_num):
+                vacuum_cache[cache_key] = E0_num
+
+    # If numeric vacuum disabled or failed, fall back to analytic
+    if not np.isfinite(E0_num):
+        E0_num = float(analytic_vacuum_energy(cfg)) if np.isfinite(E_final) else np.nan
+
+    # Mass density and bounded score
+    n0, n1, n2, n3 = map(int, cfg["lattice_size"])  # type: ignore
+    # normalization: default 4D volume; legacy 3D available via config
+    norm = scoring_cfg.get("density_normalization", "4D")
+    vol4 = float(n0 * n1 * n2 * n3) * (dx ** 4)
+    vol3 = float(n0 * n1 * n2) * (dx ** 3)
+    if norm == "3D":
+        volume = vol3
+    else:
+        volume = vol4
+
+    mass_density = (E_final - E0_num) / volume if (np.isfinite(E_final) and np.isfinite(E0_num) and volume > 0) else np.nan
+    # clamp small negative due to numerics
+    if np.isfinite(mass_density) and mass_density < 0:
+        mass_density = 0.0
+
+    m0 = float(scoring_cfg.get("score_ref_mass_density", 50.0))
+    score = (1.0 / (1.0 + (mass_density / m0))) if np.isfinite(mass_density) else 0.0
+    score = score if converged else 0.0
+
+    # Diagnostics logging
+    try:
+        phi_max = float(np.max(solver.phi))
+        phi_rms = float(np.sqrt(np.mean(solver.phi * solver.phi)))
+        max_dphi = float(getattr(solver, "last_max_update", np.nan))
+        breakdown = solver.compute_energy_breakdown() if converged else {}
+        Lw = float(n3 * dx)
+        logger.debug(
+            "[%s=%g, %s=%g] E1=%.6e E0=%.6e md=%.6e score=%.4f phi_max=%.3f phi_rms=%.3f maxΔφ=%.3e Lw=%.3f breakdown=%s",
+            axis1.name, v1, axis2.name, v2,
+            float(E_final) if np.isfinite(E_final) else np.nan,
+            float(E0_num) if np.isfinite(E0_num) else np.nan,
+            float(mass_density) if np.isfinite(mass_density) else np.nan,
+            float(score), phi_max, phi_rms, max_dphi, Lw, breakdown,
+        )
+    except Exception:
+        pass
 
     return {
         "i": i,
@@ -176,10 +240,15 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
         axis2.name: v2,
         "E_initial": float(E0) if np.isfinite(E0) else np.nan,
         "E_final": float(E_final) if np.isfinite(E_final) else np.nan,
-        "E_vac": float(E_vac),
-        "mass": float(mass) if np.isfinite(mass) else np.nan,
+        "E0_numeric": float(E0_num) if np.isfinite(E0_num) else np.nan,
+        "E0_analytic": float(analytic_vacuum_energy(cfg)) if np.isfinite(E_final) else np.nan,
+        "mass_density": float(mass_density) if np.isfinite(mass_density) else np.nan,
         "converged": bool(converged),
-        "stability_metric": float(metric),
+        "stability_metric": float(score),
+        "phi_max": float(phi_max) if 'phi_max' in locals() else np.nan,
+        "phi_rms": float(phi_rms) if 'phi_rms' in locals() else np.nan,
+        "max_delta_phi": float(max_dphi) if 'max_dphi' in locals() else np.nan,
+        "Lw": float(Lw) if 'Lw' in locals() else np.nan,
     }
 
 
@@ -246,8 +315,8 @@ def run_sweep(cfg: Dict) -> Tuple[pd.DataFrame, Path, Path]:
     (out_dir / "used_config.yml").write_text(yaml.safe_dump(cfg, sort_keys=False))
 
     # Controls
-    mass_scale = float(cfg.get("metric_mass_scale", 1.0))
     energy_check_only = bool(cfg.get("energy_check_only", False))
+    scoring_cfg = dict(cfg.get("scoring", {}))
 
     # Multiprocessing knobs
     procs = int(cfg.get("processes", 0))
@@ -273,7 +342,8 @@ def run_sweep(cfg: Dict) -> Tuple[pd.DataFrame, Path, Path]:
 
     worker = partial(_evaluate_point, ax1_vals=ax1_vals, ax2_vals=ax2_vals,
                      base_cfg=base_cfg, axis1=ax1, axis2=ax2,
-                     mass_scale=mass_scale, energy_check_only=energy_check_only)
+                     scoring_cfg=scoring_cfg, vacuum_cache=VACUUM_CACHE,
+                     energy_check_only=energy_check_only)
 
     results: List[Dict] = []
 
@@ -308,13 +378,13 @@ def run_sweep(cfg: Dict) -> Tuple[pd.DataFrame, Path, Path]:
     df.reset_index(drop=True, inplace=True)
 
     grid_metric = df["stability_metric"].to_numpy().reshape(len(ax1_vals), len(ax2_vals))
-    grid_mass   = df["mass"].to_numpy().reshape(len(ax1_vals), len(ax2_vals))
+    grid_mass   = df.get("mass_density", pd.Series(np.nan, index=df.index)).to_numpy().reshape(len(ax1_vals), len(ax2_vals))
     grid_conv   = df["converged"].to_numpy().reshape(len(ax1_vals), len(ax2_vals))
 
     # Save raw arrays
     np.savez(out_dir / "stability_data.npz",
              axis1_vals=ax1_vals, axis2_vals=ax2_vals,
-             stability_metric=grid_metric, mass=grid_mass, converged=grid_conv)
+             stability_metric=grid_metric, mass_density=grid_mass, converged=grid_conv)
 
     # Save CSV (one row per grid point)
     csv_path = out_dir / "stability_results.csv"

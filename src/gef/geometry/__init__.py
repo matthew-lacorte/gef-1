@@ -13,6 +13,6 @@
         #             np.sqrt(phi0_sq),
         #         )
 
-self.config.setdefault("energy_rel_tol", 1e-5)
-self.config.setdefault("max_update_tol", 5e-5)
-self.config.setdefault("convergence_warmup_iters", 500)
+# self.config.setdefault("energy_rel_tol", 1e-5)
+# self.config.setdefault("max_update_tol", 5e-5)
+# self.config.setdefault("convergence_warmup_iters", 500)

@@ -1,0 +1,22 @@
+description: "Extended P sweep at moderate stiffness to locate peninsula"
+param1: { name: mu_squared, start: 1.18, stop: 1.32, num_points: 8 }
+param2: { name: P_env,     start: 0.40, stop: 1.20, num_points: 17 }
+
+fixed:
+  g_squared: 0.20
+  h_squared: 0.10
+  dx: 0.50
+  seed_topology: 1        # hopfion seed
+  max_iters: 20000
+  clip_phi_to_unit: false
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  score: mass_density
+  score_ref_mass_density: 50.0
+  save_top_k: 5
+
+outputs:
+  save_fields_for_top_k: true
+  save_energy_breakdown: true

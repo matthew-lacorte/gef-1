@@ -233,6 +233,75 @@ def calculate_full_total_energy(
     return np.sum(energy_array) * dx4
 
 
+# JIT: energy breakdown terms (kinetic, iso, aniso, pressure, hook)
+@njit(parallel=True, fastmath=True, cache=True)
+def calculate_full_energy_breakdown(
+    phi: np.ndarray,
+    dx: float,
+    mu_squared: float,
+    lambda_val: float,
+    g_squared: float,
+    P_env: float,
+    h_squared: float,
+) -> tuple:
+    dx4 = dx ** 4
+    inv_2dx = 0.5 / dx
+    n0, n1, n2, n3 = phi.shape
+
+    kinetic_sum = 0.0
+    iso_sum = 0.0
+    aniso_sum = 0.0
+    pressure_sum = 0.0
+    hook_sum = 0.0
+
+    for i in prange(n0):
+        ip1, im1 = (i + 1) % n0, (i - 1) % n0
+        for j in range(n1):
+            jp1, jm1 = (j + 1) % n1, (j - 1) % n1
+            for k in range(n2):
+                kp1, km1 = (k + 1) % n2, (k - 1) % n2
+                for l in range(n3):
+                    lp1, lm1 = (l + 1) % n3, (l - 1) % n3
+
+                    phi_val = phi[i, j, k, l]
+                    phi_sq = phi_val * phi_val
+                    one_minus_phi_sq = 1.0 - phi_sq
+
+                    neighbors_sum = (
+                        phi[ip1, j, k, l] + phi[im1, j, k, l]
+                        + phi[i, jp1, k, l] + phi[i, jm1, k, l]
+                        + phi[i, j, kp1, l] + phi[i, j, km1, l]
+                        + phi[i, j, k, lp1] + phi[i, j, k, lm1]
+                    )
+                    laplacian_val = (neighbors_sum - 8.0 * phi_val) / (dx * dx)
+                    kinetic_density = -0.5 * phi_val * laplacian_val
+
+                    potential_iso_density = -0.5 * mu_squared * phi_sq + 0.25 * lambda_val * (phi_sq * phi_sq)
+
+                    grad_w_sq = ((phi[i, j, k, lp1] - phi[i, j, k, lm1]) * inv_2dx) ** 2
+                    potential_aniso_density = 0.5 * g_squared * (one_minus_phi_sq * one_minus_phi_sq) * grad_w_sq
+
+                    potential_pressure_density = -P_env * one_minus_phi_sq
+
+                    grad_x_sq = ((phi[ip1, j, k, l] - phi[im1, j, k, l]) * inv_2dx) ** 2
+                    grad_y_sq = ((phi[i, jp1, k, l] - phi[i, jm1, k, l]) * inv_2dx) ** 2
+                    potential_hook_density = 0.5 * h_squared * (grad_x_sq + grad_y_sq) * one_minus_phi_sq
+
+                    kinetic_sum += kinetic_density
+                    iso_sum += potential_iso_density
+                    aniso_sum += potential_aniso_density
+                    pressure_sum += potential_pressure_density
+                    hook_sum += potential_hook_density
+
+    return (
+        kinetic_sum * dx4,
+        iso_sum * dx4,
+        aniso_sum * dx4,
+        pressure_sum * dx4,
+        hook_sum * dx4,
+    )
+
+
 # =============================================================================
 # SIMULATION CONTROL
 # =============================================================================
@@ -314,6 +383,7 @@ class HopfionRelaxer:
         self.phi: np.ndarray = np.zeros(self.lattice_shape, dtype=np.float64)
         self.velocity_buffer: np.ndarray = np.zeros_like(self.phi)
         self.laplacian_buffer: np.ndarray = np.zeros_like(self.phi)
+        self.last_max_update: float = 0.0
 
         # Parameter sanity checks
         self._validate_parameters()
@@ -408,6 +478,7 @@ class HopfionRelaxer:
 
             # Guard on max field increment
             max_change = float(np.max(np.abs(update_step)))
+            self.last_max_update = max_change
             if max_change > self.max_phi_change_per_step:
                 self.dt = max(self.min_dt, self.dt * self.dt_down_factor)
                 self.velocity_buffer = (self.friction * prev_velocity) + (self.dt * force)
@@ -446,8 +517,10 @@ class HopfionRelaxer:
                 if (not np.isfinite(current_energy)) or (current_energy > self.early_exit_energy_threshold):
                     return (np.array(phi_series), np.nan) if record_series else (None, np.nan)
 
-                # Backtrack if energy increased beyond tolerance
-                if current_energy > last_energy + self.energy_increase_tolerance:
+                # Backtrack if energy increased beyond absolute/relative tolerance
+                rel_inc_tol = float(self.config.get("energy_increase_rel_tol", 1e-10))
+                inc_tol = max(self.energy_increase_tolerance, rel_inc_tol * abs(last_energy))
+                if current_energy > last_energy + inc_tol:
                     # Reject, shrink dt, try once with reduced dt
                     if prev_phi is not None:
                         self.phi[:] = prev_phi
@@ -491,4 +564,21 @@ class HopfionRelaxer:
             final_energy = np.nan
 
         return (np.array(phi_series), final_energy) if record_series else (None, final_energy)
+
+    # ------------------------------------------------------------------
+    # Diagnostics
+    # ------------------------------------------------------------------
+    def compute_energy_breakdown(self) -> dict:
+        """Return a dict of energy components and total for current field."""
+        k, iso, aniso, P, hook = calculate_full_energy_breakdown(
+            self.phi, self.dx, self.mu2, self.lam, self.g_sq, self.P_env, self.h_sq
+        )
+        return {
+            "kinetic": float(k),
+            "iso": float(iso),
+            "aniso": float(aniso),
+            "pressure": float(P),
+            "hook": float(hook),
+            "total": float(k + iso + aniso + P + hook),
+        }
 
