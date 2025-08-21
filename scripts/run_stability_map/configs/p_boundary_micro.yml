@@ -1,0 +1,48 @@
+description: "Micro-sweep around crest P* at fixed mu^2=1.26 (ΔP=0.001)"
+
+# Where outputs go
+output_dir: ./data/sim_outputs/stability_map
+
+# Parallelism
+processes: 0                # 0 -> auto (n_cores - 1)
+threads_per_process: 2
+
+# Sweep axes — micro window in P_env
+param1:
+  name: P_env
+  key: P_env
+  start: 0.46
+  stop: 0.54
+  num_points: 81            # step = (0.54-0.46)/(81-1) = 0.001
+  transform: linear
+
+# Keep mu^2 fixed via 1-point second axis
+param2:
+  name: mu_squared
+  key: mu_squared
+  start: 1.26
+  stop: 1.26
+  num_points: 1
+  transform: linear
+
+# Base solver config
+solver:
+  lattice_size: [24, 24, 16, 16]
+  dx: 0.50
+  mu_squared: 1.26
+  lambda_val: 2.0
+  P_env: 0.46
+  g_squared: 0.20
+  h_squared: 0.10
+  seed_topology: 1
+  max_iterations: 20000
+  clip_phi_to_unit: false
+  relaxation_n_skip: 0
+  relaxation_n_iter: 20000
+
+# Scoring and diagnostics
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  score_ref_mass_density: 0.07
+  density_normalization: "4D"

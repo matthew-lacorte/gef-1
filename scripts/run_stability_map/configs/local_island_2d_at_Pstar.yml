@@ -1,0 +1,55 @@
+description: "Local 2D map around ridge: mu^2 ~ 2*P* ± 0.08, P ~ P* ± 0.04 (17x17)"
+
+# Where outputs go
+output_dir: ./data/sim_outputs/stability_map
+
+# Parallelism
+processes: 0                # 0 -> auto (n_cores - 1)
+threads_per_process: 2
+
+# NOTE: Set p_star to your measured best P* from the micro sweep.
+# The ranges below are updated using p_star=0.507.
+# If your P* differs, update "p_star" and the numeric start/stop values accordingly.
+# mu^2 window: [2*p_star - 0.08, 2*p_star + 0.08]
+# P   window:  [p_star - 0.04,     p_star + 0.04]
+
+p_star: 0.507
+
+# Sweep axes — 2D neighborhood centered at P*
+param1:
+  name: mu_squared
+  key: mu_squared
+  start: 0.934                 # = 2*0.507 - 0.08
+  stop: 1.094                  # = 2*0.507 + 0.08
+  num_points: 17
+  transform: linear
+
+param2:
+  name: P_env
+  key: P_env
+  start: 0.467                 # = 0.507 - 0.04
+  stop: 0.547                  # = 0.507 + 0.04
+  num_points: 17
+  transform: linear
+
+# Base solver config
+solver:
+  lattice_size: [24, 24, 16, 16]
+  dx: 0.50
+  mu_squared: 1.014            # baseline; center of mu window (2*p_star)
+  lambda_val: 2.0
+  P_env: 0.507                 # baseline; center of P window
+  g_squared: 0.20
+  h_squared: 0.10
+  seed_topology: 1
+  max_iterations: 20000
+  clip_phi_to_unit: false
+  relaxation_n_skip: 0
+  relaxation_n_iter: 20000
+
+# Scoring and diagnostics
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  score_ref_mass_density: 0.07
+  density_normalization: "4D"
