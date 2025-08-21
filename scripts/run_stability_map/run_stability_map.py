@@ -249,9 +249,8 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
         "phi_max": float(phi_max) if 'phi_max' in locals() else np.nan,
         "phi_rms": float(phi_rms) if 'phi_rms' in locals() else np.nan,
         "max_delta_phi": float(max_dphi) if 'max_dphi' in locals() else np.nan,
+        "last_max_update": float(max_dphi) if 'max_dphi' in locals() else np.nan,
         "Lw": float(Lw) if 'Lw' in locals() else np.nan,
-        "phi_max": phi_max,
-        "phi_rms": phi_rms,
         "core_frac": float(np.mean(np.abs(solver.phi) < 0.5)) if converged else 0.0,
         "E_kin": float(breakdown.get("kinetic", np.nan)),
         "E_iso": float(breakdown.get("iso", np.nan)),
@@ -269,6 +268,30 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
 def plot_stability_map(ax1_vals: np.ndarray, ax2_vals: np.ndarray, grid_vals: np.ndarray,
                        axis1: AxisConfig, axis2: AxisConfig, out_dir: Path,
                        title: str = "GEF Configuration Stability Map") -> Path:
+    # 1D fallback: if one axis has only 1 value, render a line plot instead of pcolormesh
+    if len(ax1_vals) == 1 or len(ax2_vals) == 1:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        if len(ax2_vals) == 1:
+            y = grid_vals[:, 0]
+            x = ax1_vals
+            ax.plot(x, y, marker="o", lw=1.5)
+            ax.set_xlabel(axis1.name)
+            ax.set_ylabel("Stability Metric")
+            ax.set_title(title + f" (1D along {axis1.name}, {axis2.name}={ax2_vals[0]:.3g})")
+        else:
+            y = grid_vals[0, :]
+            x = ax2_vals
+            ax.plot(x, y, marker="o", lw=1.5)
+            ax.set_xlabel(axis2.name)
+            ax.set_ylabel("Stability Metric")
+            ax.set_title(title + f" (1D along {axis2.name}, {axis1.name}={ax1_vals[0]:.3g})")
+        ax.grid(True, linestyle="--", alpha=0.6)
+        path = out_dir / "stability_map.png"
+        fig.savefig(path, dpi=300, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+        return path
+
+    # 2D heatmap case
     fig, ax = plt.subplots(figsize=(10, 8))
 
     # Blue (low) -> Red (high)

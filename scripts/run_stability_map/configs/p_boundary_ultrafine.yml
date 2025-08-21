@@ -34,7 +34,7 @@ solver:
   g_squared: 0.20
   h_squared: 0.10
   seed_topology: 1         # hopfion seed (nw=1)
-  max_iterations: 4000     # 2000–4000 iters per point as requested
+  max_iterations: 20000    # align with relaxation_n_iter so the latter isn't silently capped
   clip_phi_to_unit: false
   relaxation_n_skip: 0
   relaxation_n_iter: 20000  
