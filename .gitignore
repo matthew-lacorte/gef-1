@@ -1,12 +1,33 @@
+# ------------------------------
 # OS
+# ------------------------------
 .DS_Store
 Thumbs.db
-results/
 __pycache__
 __pycache__/
+/**/__pycache__/
+/**/*.pyc
+
+# ------------------------------
+# Config files
+# ------------------------------
 base_config.yml
 used_config.yml
-outputs/
-_outputs/
+default.yml
 .obsidian/
 data/
+
+# ------------------------------
+# Run directories
+# ------------------------------
+results/
+outputs/
+_outputs/
+
+# ------------------------------
+# DVC
+# ------------------------------
+dvc.lock
+dvc.yaml
+.dvc
+.dvc/
