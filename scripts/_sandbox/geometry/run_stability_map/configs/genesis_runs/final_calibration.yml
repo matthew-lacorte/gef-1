@@ -1,0 +1,45 @@
+description: "High-fidelity 'Summit' run. The final calibration. Sweeps the vacuum parameters (mu^2, P_env) to climb from the ~9 MeV ground state to the target M_fund (bare mass ~117.5 MeV, rho_sim ~ 0.5)."
+
+output_dir: ./data/sim_outputs/summit_runs
+processes: 0  # Maximum power. Use all available cores.
+threads_per_process: 2
+
+# THE SCALE LEVERS: A wide sweep of the vacuum parameters to find the high-energy basin.
+param1:
+  name: mu_squared
+  key: mu_squared
+  start: 1.0   # Start from our known stable region.
+  stop: 3.0    # Climb aggressively.
+  num_points: 17
+  transform: linear
+param2:
+  name: P_env
+  key: P_env
+  start: 0.5   # Start from our known stable region.
+  stop: 1.5    # Squeeze hard.
+  num_points: 17
+  transform: linear
+
+# The core physics, with geometry knobs now fixed to a stable value.
+solver:
+  lattice_size: [24, 24, 16, 16] # Full fidelity.
+  dx: 0.5
+
+  # THEORETICAL COMMITMENT: The derived substrate coupling is our anchor.
+  lambda_val: 1.152
+
+  # THE TUNING KNOBS: Fixed to a known stable configuration from the Genesis run.
+  g_squared: 0.1
+  h_squared: 0.05
+  mu_squared: 1.0
+  P_env: 0.5
+
+  seed_topology: 1
+  max_iterations: 30000 # Full runtime for precision.
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  # THE TARGET: We are now explicitly hunting for the Model B solution.
+  score_ref_mass_density: 0.5
+  density_normalization: 4D

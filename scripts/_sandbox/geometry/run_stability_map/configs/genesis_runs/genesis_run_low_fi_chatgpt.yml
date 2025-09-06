@@ -1,0 +1,42 @@
+description: "Genesis Scale Finder: coarse sweep over (mu^2, P_env) to target rho_sim ~ 1."
+output_dir: ./data/sim_outputs/genesis_scale_finder
+processes: 0
+threads_per_process: 1
+
+param1:
+  name: mu_squared
+  key: mu_squared
+  start: 0.7
+  stop: 1.4
+  num_points: 11
+  transform: linear
+
+param2:
+  name: P_env
+  key: P_env
+  start: 0.3
+  stop: 0.7
+  num_points: 11
+  transform: linear
+
+solver:
+
+  mu_squared: 1.0
+  P_env: 0.5
+  lattice_size: [16,16,12,12]
+  dx: 0.5
+  lambda_val: 1.152
+  g_squared: 0.15         # temporarily fixed at mild values
+  h_squared: 0.08
+  seed_topology: 1
+  max_iterations: 10000
+  clip_phi_to_unit: false
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  target_rho_sim: 1.0     # << key: set target at 1
+  density_normalization: 4D
+  # Filter thresholds to enforce "good" solutions:
+  require_converged: true
+  max_last_update: 1e-6

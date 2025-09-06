@@ -1,0 +1,37 @@
+description: "High-fidelity Vindication run (Model B). Hunts for a soliton with a BARE mass of ~117.5 MeV, corresponding to a target mass_density of ~0.5. This assumes the ZPE halo scales with the total physical mass."
+
+output_dir: ./data/sim_outputs/vindication_B
+processes: 0
+threads_per_process: 2
+
+# A precision sweep of the most promising parameter space, hunting for ρ_sim ≈ 0.5
+param1:
+  name: g_squared
+  key: g_squared
+  start: 0.05
+  stop: 0.15
+  num_points: 17
+  transform: linear
+param2:
+  name: h_squared
+  key: h_squared
+  start: 0.025
+  stop: 0.075
+  num_points: 17
+  transform: linear
+
+solver:
+  lattice_size: [24, 24, 16, 16]
+  dx: 0.5
+  mu_squared: 1.0
+  P_env: 0.5
+  lambda_val: 1.152
+  seed_topology: 1
+  max_iterations: 30000
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  # Score is now based on proximity to the Model B target density.
+  score_ref_mass_density: 0.5
+  density_normalization: 4D

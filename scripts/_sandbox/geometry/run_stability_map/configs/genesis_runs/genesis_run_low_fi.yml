@@ -1,0 +1,50 @@
+description: "Low-fidelity 'Genesis' calibration run. Sweeps anisotropic (g^2) and Hook (h^2) couplings to hunt for the parameters that yield the fundamental mass scale (M_fund = 235 MeV)."
+
+output_dir: ./data/sim_outputs/genesis_runs
+processes: 2  # Low-fidelity: keeps CPU usage modest. Set to 0 to use all available cores.
+threads_per_process: 1
+
+# The parameters we are varying to find the correct particle geometry.
+param1:
+  name: g_squared
+  key: g_squared
+  start: 0.1
+  stop: 0.3
+  num_points: 9
+  transform: linear
+param2:
+  name: h_squared
+  key: h_squared
+  start: 0.05
+  stop: 0.2
+  num_points: 9
+  transform: linear
+
+# The core physics, now updated with our derived values.
+solver:
+  # Low-fidelity lattice to reduce computation time.
+  lattice_size: [16, 16, 12, 12]
+  dx: 0.5
+
+  # THEORETICAL COMMITMENT #1: A stable vacuum baseline.
+  # Fixed based on the 'fertile crescent' from the previous successful run.
+  mu_squared: 1.0
+  P_env: 0.5
+
+  # THEORETICAL COMMITMENT #2: The derived substrate coupling.
+  # This is not a guess. It is the direct implementation of λ_Φ ≈ 16π² α_EM.
+  lambda_val: 1.152
+
+  # We are searching for the simplest stable particle.
+  seed_topology: 1
+
+  # Low-fidelity iteration count.
+  max_iterations: 10000
+  clip_phi_to_unit: false
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  # Reference mass density for the stability metric. Tuned to favor low-mass solutions.
+  score_ref_mass_density: 0.05
+  density_normalization: 4D

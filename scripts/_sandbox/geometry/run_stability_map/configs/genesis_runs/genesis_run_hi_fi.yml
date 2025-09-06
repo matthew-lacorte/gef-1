@@ -1,0 +1,41 @@
+description: "High-fidelity 'Vindication' run. A precision sweep of the fertile crescent discovered in the Genesis run, designed to pinpoint the fundamental constants of our universe."
+
+output_dir: ./data/sim_outputs/vindication_runs
+processes: 0  # High-fidelity: Use all available CPU cores.
+threads_per_process: 2
+
+# A tighter, higher-resolution sweep of the most promising parameter space.
+param1:
+  name: g_squared
+  key: g_squared
+  start: 0.05   # We are pushing deeper into the low-g^2 region.
+  stop: 0.15
+  num_points: 17 # Higher resolution.
+  transform: linear
+param2:
+  name: h_squared
+  key: h_squared
+  start: 0.025  # We are pushing deeper into the low-h^2 region.
+  stop: 0.075
+  num_points: 17 # Higher resolution.
+  transform: linear
+
+# The core physics, with higher fidelity for a more precise result.
+solver:
+  lattice_size: [24, 24, 16, 16] # Larger lattice for more accuracy.
+  dx: 0.5
+
+  mu_squared: 1.0
+  P_env: 0.5
+  lambda_val: 1.152 # The derived constant remains the anchor of the theory.
+
+  seed_topology: 1
+
+  max_iterations: 30000 # More time for the system to find its true ground state.
+  clip_phi_to_unit: false
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  score_ref_mass_density: 0.05
+  density_normalization: 4D

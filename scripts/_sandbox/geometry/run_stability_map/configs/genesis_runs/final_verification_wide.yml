@@ -1,0 +1,40 @@
+description: "Vindication Round 2B — Wider surround to map the 117.5 MeV ridge"
+output_dir: ./data/sim_outputs/vindication_round2B
+processes: 0
+threads_per_process: 2
+
+param1:
+  name: mu_squared
+  key: mu_squared
+  start: 2.60
+  stop: 3.40
+  num_points: 33     # ~0.025 steps
+  transform: linear
+
+param2:
+  name: P_env
+  key: P_env
+  start: 0.60
+  stop: 0.78
+  num_points: 31     # ~0.006 steps
+  transform: linear
+
+solver:
+  lattice_size: [32, 32, 20, 20]
+  dx: 0.5
+  mu_squared: 3.0
+  P_env: 0.6875
+  lambda_val: 1.152
+  g_squared: 0.10
+  h_squared: 0.05
+  seed_topology: 1
+  max_iterations: 50000
+  clip_phi_to_unit: false
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true
+  score_ref_mass_density: 0.5
+  density_normalization: 4D
+  require_converged: true
+  max_last_update: 1e-6
