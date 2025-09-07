@@ -1,0 +1,46 @@
+description: "Final Run: Finite Size Scaling study to find the true electron mass in the infinite volume limit."
+output_dir: ./data/sim_outputs/even_bigger_boat
+processes: 0 
+threads_per_process: 2
+
+# We will use the parameter sweep to iterate through lattice sizes.
+# This requires a small modification to the run script to handle this special key.
+
+param1:
+  name: lattice_side_N
+  key: solver.lattice_size # This key will be handled specially
+  # Use integer values for the side length. Start with a smaller range to test.
+  start: 64
+  stop: 96
+  num_points: 5 # e.g., N = 32, 40, 48, 56, 64
+  transform: linear
+
+param2:
+  # We only need a 1D scan, so this axis has only one point.
+  name: dummy
+  key: dx # This won't change, just a placeholder
+  start: 0.5
+  stop: 0.5
+  num_points: 1
+
+solver:
+  # --- Use the BEST physical parameters from the Big Box run ---
+  mu_squared: 1.401
+  g_squared: 0.005
+  h_squared: 0.005
+  dx: 0.5
+  P_env: 0.70
+  lambda_val: 1.152
+  lattice_size: [32, 32, 20, 20]
+  
+  # The lattice_size will be overwritten by the sweep.
+  # We need to maintain the aspect ratio, e.g., [N, N, N*5/8, N*5/8]
+  aspect_ratio: [1.0, 1.0, 0.625, 0.625]
+  
+  seed_topology: 1
+  max_iterations: 150000 
+  convergence_threshold: 1e-9
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true

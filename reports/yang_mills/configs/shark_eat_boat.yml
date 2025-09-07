@@ -1,0 +1,41 @@
+description: "Final Tuning: With volume effects eliminated (N=96), find the g_squared value that yields the electron mass."
+output_dir: ./data/sim_outputs/final_tuning
+processes: 0 
+threads_per_process: 2
+
+param1:
+  name: g_squared
+  key: g_squared
+  # Sweep an even softer range to bring the mass down by that final ~10x
+  start: 0.0005
+  stop: 0.005
+  num_points: 10
+  transform: linear
+
+param2: # Dummy axis
+  name: dummy
+  key: dx 
+  start: 0.5
+  stop: 0.5
+  num_points: 1
+
+solver:
+  # --- LOCK IN THE LARGE LATTICE ---1
+  # lattice_size: [96, 96, 60, 60] # N=96 with aspect ratio
+  lattice_size: [64, 64, 40, 40]
+
+  # --- Use the BEST physical parameters ---
+  dx: 0.5
+  g_squared: 0.005
+
+  mu_squared: 1.401
+  h_squared: 0.005 # Keep h_squared fixed for now
+  P_env: 0.70
+  lambda_val: 1.152
+  
+  seed_topology: 1
+  max_iterations: 200000 # Large, soft lattices are slow to converge
+  convergence_threshold: 1e-9
+
+scoring:
+  use_numeric_vacuum: true

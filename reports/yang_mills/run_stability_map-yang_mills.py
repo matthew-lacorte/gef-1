@@ -131,6 +131,13 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
     cfg[axis1.key] = v1
     cfg[axis2.key] = v2
 
+    # Special handler for lattice size sweeps
+    if axis1.key == "solver.lattice_size":
+        N = int(v1)
+        aspect = cfg.get("aspect_ratio", [1.0, 1.0, 1.0, 1.0])
+        cfg["lattice_size"] = [int(N * r) for r in aspect]
+        logger.info(f"Set lattice_size for N={N} -> {cfg['lattice_size']}")
+
     # Keep threads per worker modest to avoid oversubscription
     threads_per_process = int(base_cfg.get("threads_per_process", 1))
     os.environ["GEF_NUMBA_NUM_THREADS"] = str(threads_per_process)
