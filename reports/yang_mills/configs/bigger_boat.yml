@@ -1,0 +1,41 @@
+description: "Hypothesis Test: Is the mass gap caused by finite volume? Run the best-case scenario in a much larger box."
+output_dir: ./data/sim_outputs/bigger_boat
+processes: 0 
+threads_per_process: 2
+
+param1:
+  name: mu_squared
+  key: mu_squared
+  start: 1.405
+  stop: 1.405
+  num_points: 1
+  transform: linear
+
+param2:
+  name: g_squared
+  key: g_squared
+  start: 0.01
+  stop: 0.01
+  num_points: 1
+  transform: linear
+
+# This config runs a single, high-cost simulation.
+solver:
+  # --- ACTION: Double the lattice dimensions ---
+  # This gives the soliton 16x the total volume to relax into.
+  lattice_size: [64, 64, 40, 40]
+  dx: 0.5 # Keep dx the same to isolate the effect of volume vs. resolution
+
+  # --- Use the BEST parameters from the "Precision Hunt" ---
+  # These are the parameters that should yield the lightest particle.
+  mu_squared: 1.401 # The lowest value from the last sweep
+  g_squared: 0.005   # The lowest value from the last sweep
+  h_squared: 0.005
+  P_env: 0.70
+  lambda_val: 1.152
+  
+  seed_topology: 1
+  max_iterations: 150000 # Give it even more time, as large lattices converge slowly
+  convergence_threshold: 1e-9
+
+# We don't need a scoring section for a single diagnostic run.

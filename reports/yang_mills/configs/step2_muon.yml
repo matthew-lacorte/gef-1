@@ -9,15 +9,17 @@ solver:
   # a new resonant mode in the *same* physical universe.
   lattice_size: [32, 32, 20, 20]
   dx: 0.5
-  mu_squared: 3.0
-  P_env: 1.5
+  mu_squared: 3.02
+  P_env: 0.6933
   lambda_val: 1.152
   g_squared: 0.10
   h_squared: 0.05
-  max_iterations: 75000
-  convergence_threshold: 1e-9
+  max_iterations: 10000
+  convergence_threshold: 1e-10
 
 # --- Define the perturbation ---
 perturbation:
   amplitude: 5.0e-3  # This is a key parameter to tune. Start small.
   mode_shape: "symmetric_breathing" # As defined in the script
+
+

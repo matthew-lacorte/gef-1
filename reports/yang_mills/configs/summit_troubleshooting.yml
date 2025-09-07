@@ -1,0 +1,37 @@
+description: "High-precision hunt for the Electron ground state (Target ρ≈0.0011)"
+output_dir: ./data/sim_outputs/electron_precision_hunt
+processes: 0
+threads_per_process: 2
+
+param1:
+  name: mu_squared
+  key: mu_squared
+  # --- ACTION: Ultra-fine sweep just above the critical point (2P = 1.4) ---
+  start: 1.401
+  stop: 1.420
+  num_points: 20  # Very small steps
+  transform: linear
+
+param2:
+  name: g_squared
+  key: g_squared
+  # --- ACTION: Sweep much smaller "stiffness" values ---
+  start: 0.005
+  stop: 0.05
+  num_points: 10
+  transform: linear
+
+solver:
+  lattice_size: [32, 32, 20, 20]
+  mu_squared: 1.401
+  dx: 0.5
+  lambda_val: 1.152
+  h_squared: 0.005 # Also reduce h_squared to a small, fixed value for this search
+  P_env: 0.70
+  seed_topology: 1
+  max_iterations: 100000 # Give it more time, as "flat" potentials can converge slowly
+  convergence_threshold: 1e-9
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true

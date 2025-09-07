@@ -8,14 +8,13 @@ solver:
   lattice_size: [32, 32, 20, 20]
   dx: 0.5
   # --- The Golden Point Parameters ---
-  mu_squared: 3.0
-  P_env: 0.6875
+  mu_squared: 3.03
+  P_env: 0.69666666
   lambda_val: 1.152
   g_squared: 0.10
   h_squared: 0.05
   # --- Simulation Controls ---
   seed_topology: 1
-  max_iterations: 75000  # Give it ample time to settle
-  convergence_threshold: 1e-9 # Stricter convergence for the ground state
+  max_iterations: 100000  # Give it ample time to settle
+  convergence_threshold: 1e-10 # Stricter convergence for the ground state
   
-# We don't need the scoring section for this single run.
