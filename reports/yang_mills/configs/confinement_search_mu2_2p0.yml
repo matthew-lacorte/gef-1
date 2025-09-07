@@ -1,0 +1,40 @@
+description: "Confinement Search (Safe Vacuum): Sweep g_squared × P_env with mu_squared=2.0 so |phi0|<=1 across the full P sweep"
+output_dir: ./data/sim_outputs/confinement_search_mu2_2p0
+processes: 0
+threads_per_process: 2
+
+param1:
+  name: g_squared
+  key: g_squared
+  start: 0.10
+  stop: 1.00
+  num_points: 10
+  transform: linear
+
+param2:
+  name: P_env
+  key: P_env
+  start: 0.50
+  stop: 1.50
+  num_points: 11
+  transform: linear
+
+solver:
+  lattice_size: [48, 48, 30, 30]
+  dx: 0.5
+  # Set mu^2 low enough so mu^2 <= lambda + 2P for entire sweep [0.5, 1.5]
+  mu_squared: 2.0
+  # Seed values (will be overwritten by sweep axes during evaluation)
+  P_env: 1.0
+  g_squared: 0.1
+
+  lambda_val: 1.152
+  h_squared: 0.1
+
+  seed_topology: 1
+  max_iterations: 100000
+  convergence_threshold: 1e-9
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true

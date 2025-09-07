@@ -1,0 +1,40 @@
+description: "The Decisive Test: A high-resolution search for the phase boundary between the 'diffuse cloud' and the 'knotted core'."
+output_dir: ./data/sim_outputs/phase_boundary_search
+processes: 0
+threads_per_process: 2
+
+param1:
+  name: g_squared
+  key: g_squared
+  # --- ACTION: High-resolution sweep of the critical 'stiffness' region ---
+  start: 0.001
+  stop: 0.2
+  num_points: 8 # High resolution is key
+  transform: linear
+
+param2:
+  name: P_env
+  key: P_env
+  # --- ACTION: Focus on the high-pressure, high-stability region ---
+  start: 1.3
+  stop: 1.4
+  num_points: 4 #7
+  transform: linear
+
+solver:
+  # Use a large, but not enormous, lattice for this exploration.
+  lattice_size: [64, 64, 40, 40]
+  dx: 0.5
+  
+  # The mu_squared value from the last search, which is stable for this P_env range.
+  mu_squared: 3.0 
+  lambda_val: 1.152
+  h_squared: 0.1
+
+  seed_topology: 1
+  max_iterations: 150000 
+  convergence_threshold: 1e-9
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true

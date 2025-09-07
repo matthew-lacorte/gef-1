@@ -1,0 +1,41 @@
+description: "The Final Calibration: A high-resolution scan of P_env on a large lattice to precisely tune the nw=1 soliton mass to the electron target."
+output_dir: ./data/sim_outputs/final_electron_calibration
+processes: 0
+threads_per_process: 2
+
+param1:
+  name: P_env
+  key: P_env
+  # --- ACTION: Sweep P_env in the high-pressure region to find ρ ≈ 0.0011 ---
+  start: 1.4
+  stop: 1.6 
+  num_points: 21 # High resolution for the final tuning
+  transform: linear
+
+param2: # Dummy axis
+  name: g_squared
+  key: g_squared
+  start: 0.1 # A moderate, stable stiffness value
+  stop: 0.1
+  num_points: 1
+
+solver:
+  # --- LOCK IN THE LARGE LATTICE for the final answer ---
+  lattice_size: [96, 96, 60, 60]
+  dx: 0.5
+  
+  # Check stability constraint: mu^2 - 2P <= lambda (1.152)
+  # At P_max = 1.6, we need mu^2 <= 1.152 + 3.2 = 4.352.
+  # A mu_squared of 3.0 is perfectly safe and stable.
+  mu_squared: 3.0 
+  lambda_val: 1.152
+  h_squared: 0.1
+  g_squared: 0.1
+  p_env: 1.4
+
+  seed_topology: 1
+  max_iterations: 200000 
+  convergence_threshold: 1e-9
+
+scoring:
+  use_numeric_vacuum: true

@@ -1,0 +1,52 @@
+description: "Hypothesis Test: Search for a stable, 'knotted core' state in a universe with high stiffness and pressure."
+output_dir: ./data/sim_outputs/confinement_search
+processes: 0
+threads_per_process: 2
+
+# We are searching for a new island of stability in the parameter space.
+
+param1:
+  name: g_squared
+  key: g_squared
+  # --- ACTION: Sweep much HIGHER stiffness values ---
+  # We are now testing the hypothesis that confinement is key.
+  start: 0.1
+  stop: 1.0
+  num_points: 10
+  transform: linear
+
+param2:
+  name: P_env
+  key: P_env
+  # --- ACTION: Sweep a range of confining pressures ---
+  # Ensure all these values satisfy the vacuum stability condition for the mu_squared we choose.
+  start: 0.5
+  stop: 1.5
+  num_points: 11
+  transform: linear
+
+solver:
+  # Use a moderately large lattice. Not the huge N=96, as this is an exploration.
+  # If we find a promising region, we can do a volume study on it later.
+  lattice_size: [48, 48, 30, 30]
+  dx: 0.5
+  
+  # --- Choose a mu_squared that allows P_env to be swept ---
+  # Constraint: mu^2 - 2P <= lambda (1.152) -> mu^2 <= 1.152 + 2P
+  # If P_max is 1.5, then we need mu^2 <= 1.152 + 3 = 4.152.
+  # Let's pick a value in the middle of this range.
+  mu_squared: 3.0 
+  
+  p_env: 0.5
+  g_squared: 0.1
+
+  lambda_val: 1.152
+  h_squared: 0.1 # Let's also give h_squared a moderate baseline stiffness.
+
+  seed_topology: 1
+  max_iterations: 100000 
+  convergence_threshold: 1e-9
+
+scoring:
+  use_numeric_vacuum: true
+  cache_numeric_vacuum: true

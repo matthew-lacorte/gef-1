@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
+import matplotlib.pyplot as plt
 import yaml
 from loguru import logger
 
@@ -217,7 +218,8 @@ def run_step(config: Dict, step: int):
     E_initial = solver.compute_total_energy()
     logger.info(f"Initial Energy (E_i): {E_initial:.6f}")
     
-    _, E_final = solver.run_relaxation()
+    # Run relaxation and record energy series for diagnostics
+    _, E_final, energy_history = solver.run_relaxation(record_energy_series=True)
     
     if not np.isfinite(E_final):
         logger.error("Relaxation failed to converge (E_final is NaN). State will not be saved.")
@@ -244,7 +246,7 @@ def run_step(config: Dict, step: int):
         vac_solver.initialize_field(nw=0)
 
     # Give the vacuum extra time to converge on these flat potentials
-    _, E_vac = vac_solver.run_relaxation(n_iter=200000) # Give it a generous budget
+    _, E_vac, _ = vac_solver.run_relaxation(n_iter=200000) # Give it a generous budget
     
     mass = E_final - E_vac
     vol4 = np.prod(solver.lattice_shape) * (solver.dx**4)
@@ -262,6 +264,33 @@ def run_step(config: Dict, step: int):
     print(f"SUMMARY amplitude={amp if amp is not None else 'NA'} mass={mass:.6f} density={mass_density:.6f}")
     
     save_state(solver, config, output_state_path)
+
+    # Optionally persist the energy history for this step
+    if energy_history is not None:
+        try:
+            p_config = config.get("perturbation", {})
+            amp = float(p_config.get("amplitude", 0.0))
+        except Exception:
+            amp = 0.0
+        fric = float(solver.friction)
+        history_filename = output_dir / f"step_{step}_energy_history_amp{amp:.2e}_fric{fric:.2f}.txt"
+        np.savetxt(history_filename, energy_history)
+        logger.info(f"Saved energy history to {history_filename}")
+
+        # Plot and save a visualization of the energy history
+        try:
+            fig, ax = plt.subplots(figsize=(8, 4.5))
+            ax.plot(np.arange(len(energy_history)), energy_history, lw=1.5)
+            ax.set_xlabel("Energy check index")
+            ax.set_ylabel("Total Energy")
+            ax.set_title(f"Energy vs. Checks (step={step}, amp={amp:.2e}, fric={fric:.2f})")
+            ax.grid(True, linestyle='--', alpha=0.5)
+            plot_path = output_dir / f"step_{step}_energy_history_amp{amp:.2e}_fric{fric:.2f}.png"
+            fig.savefig(plot_path, dpi=200, bbox_inches="tight")
+            plt.close(fig)
+            logger.info(f"Saved energy history plot to {plot_path}")
+        except Exception:
+            logger.exception("Failed to generate energy history plot.")
 
 def _load_yaml_config(path: Path) -> Dict:
     """Load a YAML file and ensure it returns a mapping.
@@ -284,6 +313,7 @@ def main():
     parser.add_argument("-c", "--config", type=Path, required=True, help="Path to the YAML config file.")
     parser.add_argument("--step", type=int, required=True, choices=[1, 2, 3], help="Which step of the chain to run.")
     parser.add_argument("--amplitude", type=float, help="Override the perturbation amplitude in the config.")
+    parser.add_argument("--friction", type=float, help="Override the solver friction parameter.")
 
     args = parser.parse_args()
 
@@ -297,6 +327,13 @@ def main():
                 config["perturbation"] = {}
             logger.info(f"Overriding perturbation amplitude with CLI value: {args.amplitude}")
             config["perturbation"]["amplitude"] = args.amplitude
+
+        # Optional: override solver friction via CLI
+        if args.friction is not None:
+            if "solver" not in config or not isinstance(config["solver"], dict):
+                raise KeyError("YAML is missing a 'solver' section; cannot override friction.")
+            logger.info(f"Overriding solver friction with CLI value: {args.friction}")
+            config["solver"]["friction"] = float(args.friction)
 
         run_step(config, args.step)
     except Exception:

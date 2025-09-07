@@ -429,7 +429,8 @@ class HopfionRelaxer:
         n_skip: Optional[int] = None,
         n_iter: Optional[int] = None,
         record_series: bool = False,
-    ) -> Tuple[Optional[np.ndarray], float]:
+        record_energy_series: bool = False,
+    ) -> Tuple[Optional[np.ndarray], float, Optional[np.ndarray]]:
         """Run damped gradient relaxation with periodic backtracking.
 
         Parameters
@@ -458,6 +459,7 @@ class HopfionRelaxer:
 
         converged = False
         phi_series: Optional[List[float]] = [] if record_series else None
+        energy_series: Optional[List[float]] = [] if record_energy_series else None
 
         for i in range(total_iterations):
             # Core force = ∇²φ - δU/δφ
@@ -501,6 +503,10 @@ class HopfionRelaxer:
             # Energy check + backtracking
             if (i % self.energy_check_interval) == 0:
                 current_energy = self.compute_total_energy()
+
+                # Optional recording of energy history
+                if record_energy_series and energy_series is not None:
+                    energy_series.append(float(current_energy))
 
                 if record_series and phi_series is not None:
                     phi_series.append(
@@ -563,7 +569,9 @@ class HopfionRelaxer:
             # Signal non-convergence upstream
             final_energy = np.nan
 
-        return (np.array(phi_series), final_energy) if record_series else (None, final_energy)
+        phi_series_out = np.array(phi_series) if record_series else None
+        energy_series_out = np.array(energy_series) if record_energy_series else None
+        return (phi_series_out, final_energy, energy_series_out)
 
     # ------------------------------------------------------------------
     # Diagnostics

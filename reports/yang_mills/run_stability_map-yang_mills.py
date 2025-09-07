@@ -160,7 +160,7 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
         E_final = E0
         converged = False
     else:
-        _, E_final = solver.run_relaxation(n_skip=n_skip, n_iter=n_iter, record_series=record_series)
+        _, E_final, _ = solver.run_relaxation(n_skip=n_skip, n_iter=n_iter, record_series=record_series)
         converged = bool(np.isfinite(E_final))
         if not converged:
             E_final = np.nan
@@ -193,7 +193,7 @@ def _evaluate_point(i_j: Tuple[int, int], ax1_vals: np.ndarray, ax2_vals: np.nda
             except Exception:
                 phi0 = 1.0
             solver0.phi.fill(phi0)
-            _, E0_tmp = solver0.run_relaxation(n_skip=n_skip, n_iter=n_iter, record_series=False)
+            _, E0_tmp, _ = solver0.run_relaxation(n_skip=n_skip, n_iter=n_iter, record_series=False)
             E0_num = float(E0_tmp) if np.isfinite(E0_tmp) else np.nan
             if cache_num_vac and np.isfinite(E0_num):
                 vacuum_cache[cache_key] = E0_num
