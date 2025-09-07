@@ -1,0 +1,23 @@
+description: "Step 2: Find the first overtone (Muon) by perturbing the Electron."
+output_dir: ./data/sim_outputs/excitation_chain
+
+# --- Key change: Define the input state ---
+input_state_path: ./data/sim_outputs/excitation_chain/step_1_final_state.npz
+
+solver:
+  # The solver config should be identical to Step 1 to ensure we're finding
+  # a new resonant mode in the *same* physical universe.
+  lattice_size: [32, 32, 20, 20]
+  dx: 0.5
+  mu_squared: 3.0
+  P_env: 1.5
+  lambda_val: 1.152
+  g_squared: 0.10
+  h_squared: 0.05
+  max_iterations: 75000
+  convergence_threshold: 1e-9
+
+# --- Define the perturbation ---
+perturbation:
+  amplitude: 5.0e-3  # This is a key parameter to tune. Start small.
+  mode_shape: "symmetric_breathing" # As defined in the script
