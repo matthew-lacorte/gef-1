@@ -92,6 +92,44 @@ def analytic_uniform_vacuum(config: Dict) -> Optional[float]:
 
 # --- Physics Perturbation ---
 
+def apply_gaussian_punch(solver: HopfionRelaxer, config: Dict):
+    """
+    Applies a localized, asymmetric kinetic "punch" to the soliton core.
+    This is a more violent perturbation designed to break symmetries and
+    potentially trigger a transition to a different topological state.
+    """
+    p_config = config.get("perturbation", {})
+    amplitude = float(p_config.get("amplitude", 0.5))
+    width = float(p_config.get("width", 4.0)) # Width of the Gaussian in grid units
+    
+    logger.info(f"Applying 'gaussian_punch' with amplitude {amplitude:.2e}, width {width:.1f}")
+    
+    shape = solver.lattice_shape
+    dims = [np.arange(s, dtype=np.float64) for s in shape]
+    x, y, z, w = np.meshgrid(dims[0], dims[1], dims[2], dims[3], indexing="ij")
+
+    # Center coordinates on the soliton's core
+    x_c = shape[0] / 2.0
+    y_c = shape[1] / 2.0
+    z_c = shape[2] / 2.0
+    w_c = shape[3] / 2.0
+    
+    # Create a 4D Gaussian packet, offset from the center to make it asymmetric
+    offset = width
+    squared_dist = (
+        ((x - x_c - offset)**2) + 
+        ((y - y_c)**2) + 
+        ((z - z_c)**2) + 
+        ((w - w_c)**2)
+    )
+    
+    punch_field = np.exp(-squared_dist / (2 * width**2))
+    
+    # Apply to the velocity buffer
+    solver.velocity_buffer += amplitude * punch_field
+    logger.success("Gaussian punch applied.")
+
+# Then, modify the main `apply_perturbation` function to choose which ping to use
 def apply_perturbation(solver: HopfionRelaxer, config: Dict):
     """
     Applies a kinetic "ping" to excite the system.
@@ -99,33 +137,40 @@ def apply_perturbation(solver: HopfionRelaxer, config: Dict):
     resonant overtones.
     """
     p_config = config.get("perturbation", {})
-    amplitude = float(p_config.get("amplitude", 1e-2))
     mode_shape = p_config.get("mode_shape", "symmetric_breathing")
-    
-    logger.info(f"Applying '{mode_shape}' perturbation with amplitude {amplitude:.2e}")
-    
-    shape = solver.lattice_shape
-    dims = [np.arange(s, dtype=np.float64) for s in shape]
-    x, y, z, w = np.meshgrid(dims[0], dims[1], dims[2], dims[3], indexing="ij")
 
-    # Center the coordinates
-    x -= shape[0] / 2.0
-    y -= shape[1] / 2.0
-    z -= shape[2] / 2.0
-    w -= shape[3] / 2.0
-    
-    # Create a symmetric "breathing mode" perturbation
-    # This mode smoothly goes to zero at the boundaries.
-    perturbation_field = (
-        np.cos(2 * np.pi * x / shape[0]) *
-        np.cos(2 * np.pi * y / shape[1]) *
-        np.cos(2 * np.pi * z / shape[2]) *
-        np.cos(2 * np.pi * w / shape[3])
-    )
-    
-    # Apply to the velocity buffer to add kinetic energy
-    solver.velocity_buffer += amplitude * perturbation_field
-    logger.success("Perturbation applied to velocity buffer.")
+    if mode_shape == "gaussian_punch":
+        apply_gaussian_punch(solver, config)
+    else: # Default to the original symmetric mode
+        # (The original code for symmetric_breathing goes here)
+        p_config = config.get("perturbation", {})
+        amplitude = float(p_config.get("amplitude", 1e-2))
+        mode_shape = p_config.get("mode_shape", "symmetric_breathing")
+        
+        logger.info(f"Applying '{mode_shape}' perturbation with amplitude {amplitude:.2e}")
+        
+        shape = solver.lattice_shape
+        dims = [np.arange(s, dtype=np.float64) for s in shape]
+        x, y, z, w = np.meshgrid(dims[0], dims[1], dims[2], dims[3], indexing="ij")
+
+        # Center the coordinates
+        x -= shape[0] / 2.0
+        y -= shape[1] / 2.0
+        z -= shape[2] / 2.0
+        w -= shape[3] / 2.0
+        
+        # Create a symmetric "breathing mode" perturbation
+        # This mode smoothly goes to zero at the boundaries.
+        perturbation_field = (
+            np.cos(2 * np.pi * x / shape[0]) *
+            np.cos(2 * np.pi * y / shape[1]) *
+            np.cos(2 * np.pi * z / shape[2]) *
+            np.cos(2 * np.pi * w / shape[3])
+        )
+        
+        # Apply to the velocity buffer to add kinetic energy
+        solver.velocity_buffer += amplitude * perturbation_field
+        logger.success("Perturbation applied to velocity buffer.")
 
 
 # --- Main Orchestration ---
@@ -208,6 +253,13 @@ def run_step(config: Dict, step: int):
     logger.info(f"Vacuum Energy (E_vac): {E_vac:.6f}")
     logger.info(f"Total Mass (E_f - E_vac): {mass:.6f}")
     logger.info(f"Mass Density (ρ): {mass_density:.6f}")
+
+    # Machine-readable one-line summary for CLI parsing (CSV-like)
+    try:
+        amp = config.get("perturbation", {}).get("amplitude", None)
+    except Exception:
+        amp = None
+    print(f"SUMMARY amplitude={amp if amp is not None else 'NA'} mass={mass:.6f} density={mass_density:.6f}")
     
     save_state(solver, config, output_state_path)
 

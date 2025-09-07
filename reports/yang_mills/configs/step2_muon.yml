@@ -17,9 +17,9 @@ solver:
   max_iterations: 150000
   convergence_threshold: 1e-10
 
-# --- Define the perturbation ---
+
+# In config_step2_muon.yml
 perturbation:
-  amplitude: 5.0e-3  # This is a key parameter to tune. Start small.
-  mode_shape: "symmetric_breathing" # As defined in the script
-
-
+  amplitude: 0.5 # Start with a strong punch
+  mode_shape: "gaussian_punch" # Use the new mode
+  width: 4.0 # Optional: control the size of the punch
