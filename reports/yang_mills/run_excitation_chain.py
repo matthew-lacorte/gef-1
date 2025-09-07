@@ -68,6 +68,27 @@ def load_state(solver: HopfionRelaxer, input_path: Path) -> Dict:
     logger.info(f"Loaded solver state from {input_path}")
     return data['config'].item()
 
+def analytic_uniform_vacuum(config: Dict) -> Optional[float]:
+    """Calculate the analytic value of phi in the uniform vacuum."""
+    try:
+        mu2 = float(config["mu_squared"])
+        P = float(config["P_env"])
+        lam = float(config["lambda_val"])
+        
+        if mu2 <= 2.0 * P:
+            return 0.0
+        
+        phi0_sq = (mu2 - 2.0 * P) / lam
+        
+        # This is the physical constraint check from your previous work
+        if phi0_sq > 1.0:
+            logger.warning(f"Analytic vacuum |phi0|={phi0_sq**0.5:.3f} > 1. Potential may be unstable.")
+            
+        return phi0_sq**0.5
+    except KeyError as e:
+        logger.error(f"Missing key for analytic vacuum calculation: {e}")
+        return None
+
 
 # --- Physics Perturbation ---
 
@@ -166,8 +187,19 @@ def run_step(config: Dict, step: int):
     # To calculate mass density, we need the vacuum energy
     logger.info("Calculating numeric vacuum energy for mass density...")
     vac_solver = HopfionRelaxer(solver_config)
-    vac_solver.initialize_field(nw=0)
-    _, E_vac = vac_solver.run_relaxation()
+    
+    # Initialize the vacuum simulation with a smarter guess
+    phi0 = analytic_uniform_vacuum(solver_config)
+    if phi0 is not None:
+        logger.info(f"Seeding vacuum simulation with analytic uniform value phi0 = {phi0:.6f}")
+        vac_solver.phi.fill(phi0)
+        vac_solver.velocity_buffer.fill(0.0)
+    else:
+        # Fallback to the old method if analytic calc fails
+        vac_solver.initialize_field(nw=0)
+
+    # Give the vacuum extra time to converge on these flat potentials
+    _, E_vac = vac_solver.run_relaxation(n_iter=200000) # Give it a generous budget
     
     mass = E_final - E_vac
     vol4 = np.prod(solver.lattice_shape) * (solver.dx**4)
@@ -199,10 +231,21 @@ def main():
     parser = argparse.ArgumentParser(description="Run a step in the GEF excitation chain.")
     parser.add_argument("-c", "--config", type=Path, required=True, help="Path to the YAML config file.")
     parser.add_argument("--step", type=int, required=True, choices=[1, 2, 3], help="Which step of the chain to run.")
+    parser.add_argument("--amplitude", type=float, help="Override the perturbation amplitude in the config.")
+
     args = parser.parse_args()
 
     try:
-        config = _load_yaml_config(args.config)
+        with open(args.config, "r") as f:
+            config = yaml.safe_load(f)
+        
+        # If the CLI argument is provided, override the config value
+        if args.amplitude is not None:
+            if "perturbation" not in config:
+                config["perturbation"] = {}
+            logger.info(f"Overriding perturbation amplitude with CLI value: {args.amplitude}")
+            config["perturbation"]["amplitude"] = args.amplitude
+
         run_step(config, args.step)
     except Exception:
         logger.exception(f"A critical error occurred in Step {args.step}.")

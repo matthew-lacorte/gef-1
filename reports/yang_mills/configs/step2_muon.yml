@@ -7,14 +7,14 @@ input_state_path: ./data/sim_outputs/excitation_chain/step_1_final_state.npz
 solver:
   # The solver config should be identical to Step 1 to ensure we're finding
   # a new resonant mode in the *same* physical universe.
-  lattice_size: [32, 32, 20, 20]
+  lattice_size: [64, 64, 40, 40]
   dx: 0.5
-  mu_squared: 3.02
-  P_env: 0.6933
+  mu_squared: 1.405
+  P_env: 0.69666666
   lambda_val: 1.152
-  g_squared: 0.10
-  h_squared: 0.05
-  max_iterations: 10000
+  g_squared: 0.005
+  h_squared: 0.005
+  max_iterations: 150000
   convergence_threshold: 1e-10
 
 # --- Define the perturbation ---
